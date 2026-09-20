@@ -43,9 +43,15 @@ _Avoid_: playlist referencia, playlist origen
 ### Musica
 
 **Release**:
-Album, single o aparicion (appears_on) de un artista de la Whitelist publicado dentro de la
-ventana de un Run. Unidad de deteccion.
+Album o single de un artista de la Whitelist, o track ajeno donde figura (appears_on), con
+`release_date` de dia dentro de la ventana de un Run y nunca visto antes por ese User. Nunca
+una compilation. Unidad de deteccion; entra completo o no entra.
 _Avoid_: lanzamiento, novedad, drop
+
+**Guardado**:
+Track que el User tiene como liked song o dentro de una playlist propia o colaborativa
+distinta de la Target Playlist. Un album guardado no hace guardados a sus tracks.
+_Avoid_: likeado, en biblioteca, escuchado
 
 **Track**:
 Cancion individual que se agrega a la Target Playlist. Un Release rinde uno o mas Tracks.
@@ -63,6 +69,12 @@ Una invocacion del scheduler. Dispara cero o mas Runs segun que Users esten venc
 _Avoid_: cron, job, sweep, corrida del scheduler
 
 **Run**:
-Una ejecucion del bot para un User. Define la ventana temporal: desde el Run anterior
-hasta ahora. Un Tick dispara Runs; un Run nunca dispara otro.
+Una ejecucion del bot para un User. Su ventana son los ultimos 7 dias, y para cada artista
+no antes de su dia de alta en la Whitelist. Arma un Lote y lo inserta; es exitoso solo si
+el Lote quedo insertado completo. Un Tick dispara Runs; un Run nunca dispara otro.
 _Avoid_: job, ejecucion, corrida
+
+**Lote**:
+Lista ordenada de Tracks que un Run decidio agregar, persistida antes de insertar, con el
+estado de insercion de cada Track. Un Run que falla a mitad se retoma desde su Lote.
+_Avoid_: batch, plan, cola

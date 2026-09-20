@@ -4,6 +4,13 @@ status: accepted
 
 # Hosting: GitHub Actions + Render Free + Neon, Tick semanal a hora fija
 
+> **Enmienda 2026-09-20 (ticket #5):** el Tick pasa a ser **diario** a la misma hora (02:37
+> ART, crons `37 5,6,7 * * *`). El guard "ultimo Run exitoso > 6 dias" se reemplaza por
+> "Run solo si el User no tiene Run exitoso hoy (fecha ART)". Motivo: un Run diario con
+> ventana de 7 dias y registro de Releases vistos agarra el mismo dia lo que sale fuera del
+> jueves y hace que una caida de Actions cueste un dia, no una semana. Todo lo demas de este
+> ADR sigue vigente.
+
 Costo cero es restriccion dura y ninguna plataforma free da web + scheduler + disco
 persistente sin tarjeta (ver research en `research/free-hosting`). Decidimos repartir en
 tres proveedores gratuitos y sin tarjeta: la **web** (FastAPI, OAuth + UI) corre en Render
