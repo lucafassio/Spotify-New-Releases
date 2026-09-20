@@ -23,7 +23,8 @@ o los artistas que el User sigue en Spotify.
 _Avoid_: fuente, input
 
 **Seed Playlist**:
-Playlist usada como Artist Source. Aporta sus artistas principales (y opcionalmente los feats).
+Playlist propia o colaborativa del User usada como Artist Source. Aporta sus artistas
+principales (y opcionalmente los feats). Playlists ajenas o editoriales no sirven.
 _Avoid_: playlist referencia, playlist origen
 
 ### Musica
