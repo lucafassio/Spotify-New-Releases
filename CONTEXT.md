@@ -8,8 +8,21 @@ de un conjunto de artistas elegido por cada usuario.
 ### Personas
 
 **User**:
-Persona que autorizo la app con su cuenta de Spotify y tiene una configuracion propia.
+Persona que conecto su cuenta de Spotify al servicio y tiene una configuracion propia.
 _Avoid_: Subscriber, cuenta, perfil
+
+**Spotify App**:
+Registro en el dashboard de desarrolladores de Spotify (client id + secret) a traves del cual
+un User autoriza al servicio. No es una cuenta de Spotify.
+_Avoid_: app (a secas, ambiguo con el servicio), credenciales
+
+**Shared App**:
+La Spotify App registrada por Luca. Ofrece hasta 5 cupos, reservados para Users no tecnicos.
+_Avoid_: app de Luca, app global
+
+**Own App**:
+Spotify App registrada por el propio User. Modo preferido; requiere Premium del User.
+_Avoid_: BYO app, app propia (en codigo)
 
 ### Artistas
 
