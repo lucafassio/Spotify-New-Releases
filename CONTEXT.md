@@ -58,7 +58,11 @@ _Avoid_: playlist destino, output playlist
 
 ### Ejecucion
 
+**Tick**:
+Una invocacion del scheduler. Dispara cero o mas Runs segun que Users esten vencidos.
+_Avoid_: cron, job, sweep, corrida del scheduler
+
 **Run**:
 Una ejecucion del bot para un User. Define la ventana temporal: desde el Run anterior
-hasta ahora.
+hasta ahora. Un Tick dispara Runs; un Run nunca dispara otro.
 _Avoid_: job, ejecucion, corrida
