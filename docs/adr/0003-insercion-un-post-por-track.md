@@ -4,6 +4,12 @@ status: accepted
 
 # Insercion en la Target Playlist: un POST por Track, en orden inverso, en `position: 0`
 
+> **Enmienda 2026-09-23 (ticket #6):** esto aplica a Target Playlists creadas por el bot. En
+> una Target Playlist existente del User se hace append (sin `position`), un POST por Track en
+> orden directo del Lote: manda el orden personalizado, donde el User ya espera lo nuevo al
+> fondo. En "agregados recientemente" descendente cada album se ve invertido; se acepta. La
+> insercion corre en la Entrega semanal (ADR 0004), no en cada Run.
+
 Queremos que lo nuevo quede arriba de la Target Playlist y que un album conserve su orden
 original tanto en el orden personalizado de Spotify como en "agregados recientemente", sin
 depender de como ordene el User. `added_at` tiene resolucion de segundos y todos los URIs de

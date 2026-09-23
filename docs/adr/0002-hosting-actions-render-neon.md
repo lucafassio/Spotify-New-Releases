@@ -10,6 +10,9 @@ status: accepted
 > ventana de 7 dias y registro de Releases vistos agarra el mismo dia lo que sale fuera del
 > jueves y hace que una caida de Actions cueste un dia, no una semana. Todo lo demas de este
 > ADR sigue vigente.
+>
+> **Enmienda 2026-09-23 (ticket #6):** el guard pasa a ser "el User no exploro hoy o tiene
+> alguna Entrega o retiro pendiente" (ADR 0004).
 
 Costo cero es restriccion dura y ninguna plataforma free da web + scheduler + disco
 persistente sin tarjeta (ver research en `research/free-hosting`). Decidimos repartir en
