@@ -2,579 +2,692 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!--
-  PROTOTIPO descartable (#7). Tres variantes de la UI de configuracion, switchables con la
-  barra de abajo o con las flechas del teclado (hash #A / #B / #C). Estado en memoria, datos
-  de ejemplo, sin backend. Abrir con doble click.
+  PROTOTIPO descartable (#7), ronda 2. Tres variantes del Panel (B1 Biblioteca, B2 Tablero,
+  B3 Ajustes) sobre la paleta negro + verde. Login unico. Boton "Nombres" muestra el nombre de
+  cada elemento segun docs/design/style-guide.md (#10). Estado en memoria, sin backend.
+  Datos de ejemplo.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Figtree:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
 <style>
+/* Tokens: ver docs/design/style-guide.md. Diseno de un solo tema (oscuro), a proposito. */
 :root {
-  --bg: #F2F4F1; --surface: #FFFFFF; --surface2: #E7EBE6; --ink: #17201B; --muted: #5A655E;
-  --line: #D3D9D2; --accent: #2B4FD6; --accent-ink: #FFFFFF; --accent-soft: #E2E8FC;
-  --ok: #247548; --ok-soft: #DDF0E4; --warn: #9A600C; --warn-soft: #F8EBD3; --crit: #B42318; --crit-soft: #FBE1DE;
-  --bar: #17201B; --bar-ink: #F2F4F1;
-  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
-  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --bg: #101512; --surface: #19201B; --surface2: #232B25; --ink: #E6ECE7; --muted: #99A49D;
-    --line: #313A33; --accent: #93A8FF; --accent-ink: #0C1333; --accent-soft: #222B52;
-    --ok: #62C98E; --ok-soft: #173424; --warn: #E3A64D; --warn-soft: #3A2A12; --crit: #F2806F; --crit-soft: #3D1A16;
-    --bar: #E6ECE7; --bar-ink: #101512;
-  }
-}
-:root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #101512; --surface: #19201B; --surface2: #232B25; --ink: #E6ECE7; --muted: #99A49D;
-  --line: #313A33; --accent: #93A8FF; --accent-ink: #0C1333; --accent-soft: #222B52;
-  --ok: #62C98E; --ok-soft: #173424; --warn: #E3A64D; --warn-soft: #3A2A12; --crit: #F2806F; --crit-soft: #3D1A16;
-  --bar: #E6ECE7; --bar-ink: #101512;
+  --negro: #000000;
+  --fondo: #0B0B0B;
+  --superficie: #141414;
+  --elevada: #1E1E1E;
+  --elevada-2: #2A2A2A;
+  --linea: #2E2E2E;
+  --texto: #F5F5F2;
+  --texto-2: #A7A9A4;
+  --texto-3: #6E716B;
+  --verde: #1ED760;
+  --verde-hondo: #13A049;
+  --verde-tinta: #04210F;
+  --verde-suave: rgba(30, 215, 96, 0.14);
+  --lima: #C6F432;
+  --ambar: #F5B642;
+  --ambar-suave: rgba(245, 182, 66, 0.14);
+  --rojo: #FF6B6B;
+  --rojo-suave: rgba(255, 107, 107, 0.14);
+  --display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --mono: "DM Mono", ui-monospace, Consolas, monospace;
+  --r-s: 6px; --r-m: 10px; --r-l: 16px;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); padding: 0 16px 120px; }
-h1, h2, h3 { font-family: var(--display); line-height: 1.15; text-wrap: balance; margin: 0; }
-h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.01em; }
-h2 { font-size: 21px; font-weight: 700; }
-h3 { font-size: 16px; font-weight: 700; }
+html { background: var(--negro); }
+body { margin: 0; background: var(--negro); color: var(--texto); font: 15px/1.5 var(--body); padding: 0 16px 110px; }
+h1, h2, h3 { font-family: var(--display); margin: 0; line-height: 1.05; text-wrap: balance; }
 p { margin: 0; }
-small, .muted { color: var(--muted); }
-small { font-size: 13px; }
-.mono { font-family: var(--mono); font-size: 13px; }
-.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.btn { border: 1px solid var(--line); background: var(--surface); padding: 8px 14px; border-radius: 8px; font-weight: 500; }
-.btn:hover { border-color: var(--muted); }
-.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.btn.danger { color: var(--crit); }
-.btn.link { border: 0; background: none; padding: 4px 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-.btn:disabled { opacity: 0.45; cursor: not-allowed; }
-input[type=text], input[type=password], select { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; }
-input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 17px; height: 17px; margin: 2px 0 0; flex: none; }
-.pill { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--surface2); color: var(--muted); white-space: nowrap; }
-.pill.ok { background: var(--ok-soft); color: var(--ok); }
-.pill.warn { background: var(--warn-soft); color: var(--warn); }
-.pill.crit { background: var(--crit-soft); color: var(--crit); }
-.pill.accent { background: var(--accent-soft); color: var(--accent); }
-.note { border-radius: 8px; padding: 10px 12px; font-size: 14px; background: var(--surface2); }
-.note.warn { background: var(--warn-soft); }
-.note.crit { background: var(--crit-soft); }
-.stack { display: flex; flex-direction: column; gap: 12px; }
-.row { display: flex; gap: 10px; align-items: flex-start; }
-.row.center { align-items: center; }
+:focus-visible { outline: 2px solid var(--verde); outline-offset: 2px; }
+.muted { color: var(--texto-2); }
+.faint { color: var(--texto-3); }
+small { font-size: 13px; color: var(--texto-2); }
+.nums { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--mono); font-size: 13px; }
+.eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--texto-2); }
+.row { display: flex; gap: 10px; align-items: center; }
 .wrap { flex-wrap: wrap; }
 .grow { flex: 1; min-width: 0; }
-.nums { font-variant-numeric: tabular-nums; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.ellip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* editores compartidos */
-.opt { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.opt:last-child { border-bottom: 0; }
-.opt.off { color: var(--muted); }
-.opt label { cursor: pointer; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { display: inline-flex; gap: 6px; align-items: center; background: var(--accent-soft); color: var(--accent); border-radius: 99px; padding: 3px 4px 3px 10px; font-size: 14px; font-weight: 500; }
-.chip button { border: 0; background: none; color: inherit; padding: 0 6px; font-size: 15px; line-height: 1; }
-.results { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.results button { border: 0; border-bottom: 1px solid var(--line); background: var(--surface); text-align: left; padding: 7px 10px; }
-.results button:last-child { border-bottom: 0; }
-.results button:hover { background: var(--surface2); }
-.meter { height: 6px; background: var(--surface2); border-radius: 99px; overflow: hidden; }
-.meter i { display: block; height: 100%; background: var(--accent); }
-.meter.warn i { background: var(--warn); }
-.meter.crit i { background: var(--crit); }
-.tracks { list-style: none; margin: 0; padding: 0; font-size: 14px; }
-.tracks li { padding: 5px 0; border-bottom: 1px dashed var(--line); display: flex; gap: 8px; }
-.tracks li:last-child { border-bottom: 0; }
-.confirm { border: 1px solid var(--crit); border-radius: 10px; padding: 14px; background: var(--crit-soft); }
-.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
-.copybox { display: flex; gap: 8px; align-items: center; background: var(--surface2); border-radius: 8px; padding: 6px 6px 6px 10px; overflow-x: auto; }
-.copybox code { font-family: var(--mono); font-size: 13px; white-space: nowrap; flex: 1; }
+/* ---------- primitivos ---------- */
+.btn { border: 1px solid var(--texto-3); background: none; color: var(--texto); padding: 8px 16px; border-radius: 99px; font-weight: 700; font-size: 14px; white-space: nowrap; }
+.btn:hover { border-color: var(--texto); transform: scale(1.02); }
+.btn.primario { background: var(--verde); border-color: var(--verde); color: var(--negro); }
+.btn.primario:hover { background: #3BE477; }
+.btn.fantasma { border-color: transparent; color: var(--texto-2); padding-inline: 10px; }
+.btn.fantasma:hover { color: var(--texto); }
+.btn.peligro { border-color: transparent; color: var(--rojo); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.btn.grande { padding: 14px 30px; font-size: 16px; }
+.sw { position: relative; width: 40px; height: 22px; border-radius: 99px; background: var(--elevada-2); border: 0; flex: none; padding: 0; transition: background .15s; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--texto-2); transition: transform .15s, background .15s; }
+.sw[aria-checked="true"] { background: var(--verde); }
+.sw[aria-checked="true"]::after { transform: translateX(18px); background: var(--negro); }
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: var(--elevada-2); color: var(--texto-2); white-space: nowrap; }
+.pill.ok { background: var(--verde-suave); color: var(--verde); }
+.pill.warn { background: var(--ambar-suave); color: var(--ambar); }
+.pill.crit { background: var(--rojo-suave); color: var(--rojo); }
+.pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.aviso { border-radius: var(--r-m); padding: 10px 14px; font-size: 14px; background: var(--elevada); color: var(--texto-2); }
+.aviso b { color: var(--texto); }
+.aviso.warn { background: var(--ambar-suave); color: #F8D59A; }
+.aviso.crit { background: var(--rojo-suave); color: #FFB3B3; }
+.aviso.ok { background: var(--verde-suave); color: #9EF0BC; }
+.chip { display: inline-flex; align-items: center; gap: 8px; background: var(--elevada); border-radius: 99px; padding: 3px 4px 3px 3px; font-size: 14px; font-weight: 600; }
+.chip button { border: 0; background: none; color: var(--texto-3); padding: 0 8px; font-size: 16px; line-height: 1; }
+.chip button:hover { color: var(--texto); }
+input[type=text], input[type=password], input[type=search], select { width: 100%; background: var(--elevada); border: 1px solid transparent; border-radius: var(--r-s); padding: 10px 12px; color: var(--texto); }
+input:hover, select:hover { border-color: var(--linea); }
+input:focus { border-color: var(--texto-2); outline: none; }
+label { cursor: pointer; }
 
-/* ---------- A: Asistente ---------- */
-.a { max-width: 640px; margin: 0 auto; padding-block: 28px; display: flex; flex-direction: column; gap: 22px; }
-.a-hero { background: var(--accent); color: var(--accent-ink); border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 4px; }
-.a-hero .big { font-family: var(--display); font-size: 34px; font-weight: 800; line-height: 1.05; }
-.a-list { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
-.a-item { display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
-.a-item:last-child { border-bottom: 0; }
-.a-progress { display: flex; gap: 6px; }
-.a-progress i { flex: 1; height: 4px; border-radius: 99px; background: var(--line); }
-.a-progress i.on { background: var(--accent); }
-.a-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
-.a-nav { display: flex; justify-content: space-between; gap: 10px; }
-.a-choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-.a-tile { text-align: left; border: 2px solid var(--line); background: var(--surface); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 6px; }
-.a-tile.on { border-color: var(--accent); }
-.a-review dt { font-weight: 600; margin-top: 10px; }
-.a-review dd { margin: 0; color: var(--muted); }
+/* portadas generadas: color por Canal o por artista */
+.cover { flex: none; border-radius: var(--r-s); position: relative; overflow: hidden; background: linear-gradient(135deg, hsl(var(--h) 70% 52%), hsl(calc(var(--h) + 50) 65% 22%)); display: grid; place-items: end start; }
+.cover span { font-family: var(--display); font-weight: 900; font-stretch: 70%; color: rgba(0,0,0,.55); line-height: .8; padding: 6%; letter-spacing: -0.02em; }
+.avatar { flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 11px; color: rgba(0,0,0,.7); background: hsl(var(--h) 55% 62%); }
 
-/* ---------- B: Panel ---------- */
-.b { display: grid; grid-template-columns: 250px 1fr; gap: 20px; max-width: 1180px; margin: 0 auto; padding-block: 20px; align-items: start; }
-.b-side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); display: flex; flex-direction: column; gap: 14px; }
-.b-who { display: flex; flex-direction: column; gap: 2px; }
-.b-nav { display: flex; flex-direction: column; gap: 2px; }
-.b-nav button { display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 0; background: none; text-align: left; padding: 9px 10px; border-radius: 8px; font-weight: 500; }
-.b-nav button:hover { background: var(--surface2); }
-.b-nav button.on { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
-.b-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.b-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-.b-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start; }
-.b-sec { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.b-col { display: flex; flex-direction: column; gap: 16px; }
-.b-login { max-width: 980px; margin: 0 auto; padding-block: 32px; display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; align-items: start; }
-@media (max-width: 820px) {
-  .b, .b-login, .b-grid { grid-template-columns: 1fr; }
-  .b-side { position: static; }
-  .b-nav { flex-direction: row; overflow-x: auto; }
-  .b-nav button { white-space: nowrap; }
-  .b-nav button.on { box-shadow: inset 0 -3px 0 var(--accent); }
+/* ---------- shared: filas de Track ---------- */
+.lote { display: flex; flex-direction: column; }
+.track { display: grid; grid-template-columns: 22px 40px 1fr auto; gap: 12px; align-items: center; padding: 6px 8px; border-radius: var(--r-s); }
+.track:hover { background: var(--elevada); }
+.track .n { color: var(--texto-3); text-align: right; font-size: 14px; }
+.track b { font-weight: 600; display: block; }
+.track small { display: block; }
+.meter { height: 6px; border-radius: 99px; background: var(--elevada-2); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--verde); border-radius: 99px; }
+.meter.warn i { background: var(--ambar); }
+.meter.crit i { background: var(--rojo); }
+
+/* editores */
+.fuente { display: flex; gap: 14px; align-items: center; padding: 12px 0; }
+.seeds { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.seed { position: relative; text-align: left; border: 0; background: var(--elevada); border-radius: var(--r-m); padding: 10px; display: flex; flex-direction: column; gap: 8px; transition: background .12s; }
+.seed:hover { background: var(--elevada-2); }
+.seed .cover { width: 100%; aspect-ratio: 1; max-width: 100%; }
+.seed .nm { font-weight: 700; font-size: 14px; line-height: 1.2; }
+.seed.on { box-shadow: inset 0 0 0 2px var(--verde); }
+.seed .tick { position: absolute; top: 16px; right: 16px; width: 26px; height: 26px; border-radius: 50%; background: var(--verde); color: var(--negro); display: grid; place-items: center; font-weight: 900; font-size: 14px; }
+.seed.off { opacity: .45; cursor: not-allowed; }
+.feats { display: flex; flex-direction: column; gap: 2px; }
+.feats .row { padding: 6px 0; }
+.results { display: flex; flex-direction: column; background: var(--elevada); border-radius: var(--r-m); padding: 4px; }
+.results button { border: 0; background: none; text-align: left; padding: 7px 8px; border-radius: var(--r-s); display: flex; gap: 10px; align-items: center; font-weight: 600; }
+.results button:hover { background: var(--elevada-2); }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.seg button { border: 0; background: var(--elevada); color: var(--texto); border-radius: 99px; padding: 7px 14px; font-weight: 600; font-size: 14px; }
+.seg button:hover { background: var(--elevada-2); }
+.seg button.on { background: var(--texto); color: var(--negro); }
+.seg button:disabled { opacity: .4; cursor: not-allowed; }
+.opt { display: flex; gap: 12px; align-items: center; padding: 8px 10px; border-radius: var(--r-s); border: 0; background: none; text-align: left; width: 100%; }
+.opt:hover { background: var(--elevada); }
+.opt.on { background: var(--elevada); box-shadow: inset 0 0 0 1px var(--verde); }
+.opt:disabled { opacity: .4; cursor: not-allowed; }
+.confirm { border-radius: var(--r-m); padding: 16px; background: var(--rojo-suave); display: flex; flex-direction: column; gap: 10px; }
+
+/* ---------- shell comun del Panel ---------- */
+.shell { display: grid; grid-template-columns: 280px 1fr; gap: 8px; max-width: 1320px; margin: 0 auto; padding-block: 8px; align-items: start; }
+.side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 8px); display: flex; flex-direction: column; gap: 8px; }
+.card { background: var(--superficie); border-radius: var(--r-m); }
+.perfil { display: flex; align-items: center; gap: 10px; padding: 14px 16px; }
+.biblio { padding: 12px 8px 12px; display: flex; flex-direction: column; gap: 2px; }
+.biblio-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 8px 10px; }
+.canal-row { display: flex; gap: 12px; align-items: center; padding: 8px; border: 0; background: none; border-radius: var(--r-s); text-align: left; width: 100%; }
+.canal-row:hover { background: var(--elevada); }
+.canal-row.on { background: var(--elevada-2); }
+.canal-row .nm { font-weight: 600; }
+.canal-row.on .nm { color: var(--verde); }
+.horario { padding: 14px 16px; font-size: 13px; color: var(--texto-2); display: flex; flex-direction: column; gap: 6px; }
+.horario b { color: var(--texto); }
+.mainp { min-width: 0; overflow: hidden; }
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; }
+  .side { position: static; }
+  .biblio { flex-direction: row; overflow-x: auto; align-items: center; }
+  .biblio-head { padding: 0 8px 0 4px; }
+  .biblio-head .eyebrow { display: none; }
+  .canal-row { width: auto; flex: none; }
 }
 
-/* ---------- C: Frase ---------- */
-.c { max-width: 760px; margin: 0 auto; padding-block: 36px; display: flex; flex-direction: column; gap: 34px; }
-.c-lead { font-family: var(--display); font-size: 19px; color: var(--muted); font-weight: 500; }
-.c-lead b { color: var(--ink); }
-.c-canal { display: flex; flex-direction: column; gap: 12px; padding-top: 22px; border-top: 1px solid var(--line); }
-.c-sentence { font-family: var(--display); font-size: 27px; font-weight: 500; line-height: 1.5; letter-spacing: -0.01em; }
-.c-tok { font: inherit; font-weight: 700; color: var(--accent); background: none; border: 0; padding: 0 2px; border-bottom: 2px dotted var(--accent); border-radius: 0; }
-.c-tok.on { background: var(--accent-soft); border-bottom-style: solid; }
-.c-edit { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.c-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 14px; color: var(--muted); align-items: center; }
-@media (max-width: 520px) { .c-sentence { font-size: 22px; } }
+/* ---------- B1 Biblioteca ---------- */
+.b1-head { padding: 64px 24px 24px; display: flex; gap: 24px; align-items: flex-end; background: linear-gradient(180deg, hsl(var(--h) 55% 32%) 0%, hsl(var(--h) 45% 16%) 100%); }
+.b1-head .cover { width: 200px; height: 200px; box-shadow: 0 8px 40px rgba(0,0,0,.5); }
+.b1-head .cover span { font-size: 120px; }
+.b1-title { font-size: clamp(36px, 7vw, 84px); font-weight: 900; font-stretch: 80%; letter-spacing: -0.03em; line-height: .95; }
+.b1-body { background: linear-gradient(180deg, hsl(var(--h) 30% 10%) 0, var(--superficie) 240px); padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 22px; }
+.b1-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.play { width: 56px; height: 56px; border-radius: 50%; background: var(--verde); display: grid; place-items: center; color: var(--negro); flex: none; }
+.cuenta { font-family: var(--display); font-stretch: 75%; font-weight: 800; font-size: 22px; line-height: 1.05; }
+.tabs { display: flex; gap: 8px; }
+.tabs button { border: 0; background: var(--elevada); color: var(--texto); border-radius: 99px; padding: 7px 16px; font-weight: 600; font-size: 14px; }
+.tabs button.on { background: var(--texto); color: var(--negro); }
+.b1-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px 32px; }
+.b1-block { display: flex; flex-direction: column; gap: 10px; }
+.b1-block h2 { font-size: 22px; font-weight: 800; }
+.tl-head { display: grid; grid-template-columns: 22px 40px 1fr auto; gap: 12px; padding: 0 8px 8px; border-bottom: 1px solid var(--linea); color: var(--texto-3); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+@media (max-width: 720px) {
+  .b1-head { flex-direction: column; align-items: flex-start; padding-top: 28px; }
+  .b1-head .cover { width: 120px !important; height: 120px !important; }
+  .b1-head .cover span { font-size: 74px !important; }
+  .b1-grid { grid-template-columns: 1fr; }
+}
 
-/* ---------- barra del prototipo ---------- */
-.proto { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); z-index: 10; max-width: calc(100% - 16px); }
-.proto-in { display: flex; align-items: center; gap: 4px; background: var(--bar); color: var(--bar-ink); border-radius: 99px; padding: 5px; box-shadow: 0 6px 24px rgba(0,0,0,.25); font-size: 13px; }
-.proto-in button { border: 0; background: none; color: inherit; border-radius: 99px; padding: 6px 10px; white-space: nowrap; }
-.proto-in button:hover { background: color-mix(in srgb, var(--bar-ink) 15%, transparent); }
-.proto-in .lbl { font-weight: 600; padding: 0 6px; white-space: nowrap; }
-.proto-sep { width: 1px; align-self: stretch; background: color-mix(in srgb, var(--bar-ink) 25%, transparent); margin: 4px 2px; }
-.debug { position: fixed; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 70px); width: min(420px, calc(100% - 24px)); max-height: 55vh; overflow: auto; background: var(--bar); color: var(--bar-ink); border-radius: 12px; padding: 12px; font: 12px/1.45 var(--mono); white-space: pre; z-index: 9; }
-@media (max-width: 520px) { .proto-in .hide-sm { display: none; } }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+/* ---------- B2 Tablero ---------- */
+.b2 { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.b2-hero { background: var(--verde); color: var(--negro); border-radius: var(--r-l); padding: 22px 24px; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: end; }
+.b2-hero .eyebrow { color: var(--verde-tinta); }
+.b2-hero .big { font-family: var(--display); font-weight: 900; font-stretch: 72%; font-size: clamp(40px, 7vw, 76px); line-height: .9; letter-spacing: -0.02em; }
+.b2-hero .clock { display: flex; gap: 14px; }
+.b2-hero .clock div { display: flex; flex-direction: column; align-items: center; }
+.b2-hero .clock b { font-family: var(--mono); font-size: 34px; font-weight: 500; line-height: 1; }
+.b2-hero .clock small { color: var(--verde-tinta); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
+.b2-canal { display: flex; gap: 16px; align-items: center; }
+.b2-canal .cover { width: 72px; height: 72px; }
+.b2-canal .cover span { font-size: 44px; }
+.b2-canal h1 { font-size: 40px; font-weight: 900; font-stretch: 80%; letter-spacing: -0.02em; }
+.bento { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.tile { background: var(--elevada); border-radius: var(--r-l); padding: 18px; display: flex; flex-direction: column; gap: 12px; border: 0; text-align: left; color: var(--texto); min-width: 0; }
+button.tile:hover { background: var(--elevada-2); }
+.tile .k { font-family: var(--display); font-weight: 900; font-stretch: 75%; font-size: 44px; line-height: .9; }
+.tile .lbl { display: flex; justify-content: space-between; align-items: center; }
+.tile .edit { font-size: 12px; font-weight: 700; color: var(--texto-3); }
+button.tile:hover .edit { color: var(--verde); }
+.tile.lote-t { grid-column: span 2; grid-row: span 2; }
+.stackav { display: flex; }
+.stackav .avatar { width: 30px; height: 30px; margin-left: -8px; box-shadow: 0 0 0 2px var(--elevada); }
+.stackav .avatar:first-child { margin-left: 0; }
+.weeks { display: flex; gap: 4px; }
+.weeks i { flex: 1; height: 26px; border-radius: 4px; background: var(--elevada-2); }
+.weeks i.on { background: var(--verde); }
+.weeks i.acum { background: repeating-linear-gradient(45deg, var(--verde) 0 4px, var(--verde-hondo) 4px 8px); }
+.drawer-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 20; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100%); background: var(--superficie); z-index: 21; padding: calc(env(safe-area-inset-top, 0px) + 20px) 22px calc(env(safe-area-inset-bottom, 0px) + 24px); overflow-y: auto; display: flex; flex-direction: column; gap: 18px; box-shadow: -20px 0 60px rgba(0,0,0,.6); }
+.drawer h2 { font-size: 28px; font-weight: 900; font-stretch: 80%; }
+@media (max-width: 900px) { .bento { grid-template-columns: 1fr 1fr; } .tile.lote-t { grid-column: span 2; grid-row: auto; } }
+@media (max-width: 560px) { .bento { grid-template-columns: 1fr; } .tile.lote-t { grid-column: auto; } .b2-hero { grid-template-columns: 1fr; } }
+
+/* ---------- B3 Ajustes ---------- */
+.b3 { display: flex; flex-direction: column; }
+.b3-franja { background: var(--verde); color: var(--negro); padding: 18px 24px; display: flex; gap: 12px 28px; align-items: baseline; flex-wrap: wrap; border-radius: var(--r-m) var(--r-m) 0 0; }
+.b3-franja .big { font-family: var(--display); font-weight: 900; font-stretch: 68%; font-size: clamp(30px, 5vw, 48px); line-height: .95; text-transform: uppercase; letter-spacing: -0.01em; }
+.b3-franja span { font-weight: 700; }
+.b3-in { padding: 28px 24px 32px; display: flex; flex-direction: column; gap: 28px; max-width: 820px; }
+.b3-head { display: flex; gap: 18px; align-items: center; }
+.b3-head .cover { width: 96px; height: 96px; }
+.b3-head .cover span { font-size: 60px; }
+.b3-head h1 { font-size: clamp(32px, 5vw, 54px); font-weight: 900; font-stretch: 85%; letter-spacing: -0.02em; }
+.ajustes { display: flex; flex-direction: column; border-top: 1px solid var(--linea); }
+.ajuste { border-bottom: 1px solid var(--linea); }
+.ajuste > button { width: 100%; border: 0; background: none; display: grid; grid-template-columns: 150px 1fr auto; gap: 16px; align-items: center; padding: 16px 4px; text-align: left; }
+.ajuste > button:hover .val { color: var(--texto); }
+.ajuste .key { font-weight: 700; }
+.ajuste .val { color: var(--texto-2); }
+.ajuste .chev { color: var(--texto-3); font-size: 20px; transition: transform .15s; }
+.ajuste.open .chev { transform: rotate(90deg); color: var(--verde); }
+.ajuste .body { padding: 0 4px 20px; }
+.b3 h2 { font-size: 24px; font-weight: 800; }
+@media (max-width: 600px) { .ajuste > button { grid-template-columns: 1fr auto; } .ajuste .val { grid-column: 1; grid-row: 2; } .ajuste .chev { grid-row: 1 / span 2; grid-column: 2; } }
+
+/* ---------- Login ---------- */
+.login { max-width: 900px; margin: 0 auto; min-height: 88vh; display: flex; flex-direction: column; justify-content: center; gap: 36px; padding-block: 48px; }
+.marca { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 800; font-stretch: 80%; font-size: 20px; }
+.marca i { width: 26px; height: 26px; border-radius: 50%; background: var(--verde); display: grid; place-items: center; }
+.marca i::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--negro); }
+.frase { font-family: var(--display); font-weight: 800; font-stretch: 78%; font-size: clamp(38px, 7.2vw, 88px); line-height: .98; letter-spacing: -0.025em; }
+.frase em { font-style: normal; color: var(--verde); }
+.frase .tok { color: var(--verde); border-bottom: 4px dotted var(--verde); }
+.login .sub { font-size: 18px; color: var(--texto-2); max-width: 560px; }
+.alta { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 26px; padding-block: 48px; }
+.alta .frase { font-size: clamp(32px, 5.4vw, 60px); }
+.pasos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; counter-reset: p; }
+.pasos li { counter-increment: p; display: grid; grid-template-columns: 40px 1fr; gap: 14px; padding: 14px; background: var(--superficie); border-radius: var(--r-m); }
+.pasos li::before { content: counter(p); font-family: var(--display); font-weight: 900; font-size: 30px; line-height: 1; color: var(--verde); }
+.copybox { display: flex; gap: 8px; align-items: center; background: var(--elevada); border-radius: var(--r-s); padding: 6px 6px 6px 12px; overflow-x: auto; margin-top: 8px; }
+.copybox code { font-family: var(--mono); font-size: 13px; white-space: nowrap; flex: 1; }
+.claves { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 600px) { .claves { grid-template-columns: 1fr; } }
+
+/* ---------- barra del prototipo y capa de Nombres ---------- */
+.proto { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); z-index: 40; max-width: calc(100% - 16px); }
+.proto-in { display: flex; align-items: center; gap: 2px; background: #F5F5F2; color: #0B0B0B; border-radius: 99px; padding: 5px; box-shadow: 0 6px 30px rgba(0,0,0,.6); font-size: 13px; overflow-x: auto; }
+.proto-in button { border: 0; background: none; color: inherit; border-radius: 99px; padding: 6px 11px; white-space: nowrap; font-weight: 600; }
+.proto-in button:hover { background: rgba(0,0,0,.08); }
+.proto-in button.on { background: #0B0B0B; color: #F5F5F2; }
+.proto-sep { width: 1px; align-self: stretch; background: rgba(0,0,0,.18); margin: 4px 3px; flex: none; }
+.names [data-n] { outline: 1px dashed rgba(30, 215, 96, 0.28); outline-offset: -1px; }
+.nhl { position: absolute; pointer-events: none; z-index: 30; border: 2px solid var(--lima); border-radius: 4px; background: rgba(198, 244, 50, 0.08); }
+.nhl span { position: absolute; left: -2px; top: -22px; background: var(--lima); color: #111; font: 700 12px/1 var(--body); padding: 4px 7px; border-radius: 4px 4px 4px 0; white-space: nowrap; }
+.ntip { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 66px); z-index: 41; background: var(--lima); color: #111; font: 600 13px/1.3 var(--body); padding: 8px 14px; border-radius: 99px; max-width: calc(100% - 24px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+.debug { position: fixed; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 70px); width: min(420px, calc(100% - 24px)); max-height: 55vh; overflow: auto; background: #F5F5F2; color: #111; border-radius: 12px; padding: 12px; font: 12px/1.45 var(--mono); white-space: pre; z-index: 39; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } .btn:hover { transform: none; } }
 </style>
 
 <div id="app"></div>
+<div id="nhl" class="nhl" hidden><span></span></div>
+<div id="ntip" class="ntip" hidden></div>
 <div id="debug" class="debug" hidden></div>
-<div class="proto"><div class="proto-in">
-  <button data-act="v-prev" aria-label="Variante anterior">&larr;</button>
-  <span class="lbl" id="vlabel"></span>
-  <button data-act="v-next" aria-label="Variante siguiente">&rarr;</button>
-  <span class="proto-sep"></span>
-  <button data-act="debug">Estado</button>
-  <button data-act="logout" class="hide-sm" id="loginbtn">Ver login</button>
-</div></div>
+<div class="proto"><div class="proto-in" id="proto"></div></div>
 
 <script>
-// ---------- datos de ejemplo ----------
-const FOLLOWS = 87;
-const REDIRECT = "https://spotify-new-releases.onrender.com/callback";
+// ---------- datos de ejemplo (no son de ninguna cuenta real) ----------
+const PERFIL = { nombre: "Luca", handle: "luca", follows: 87 };
+// tipo: propia | colaborativa | ajena (ajena = de otro, Spotify no deja leerla)
 const PLAYLISTS = [
   { id: "p1", nombre: "Rock argentino que no falla", tipo: "propia", artistas: 34, feats: 11, items: 412 },
   { id: "p2", nombre: "Viaje a la costa", tipo: "propia", artistas: 58, feats: 23, items: 690 },
   { id: "p3", nombre: "Previa con los pibes", tipo: "colaborativa", artistas: 41, feats: 19, items: 233 },
   { id: "p4", nombre: "Todo lo que escuche en 2025", tipo: "propia", artistas: 212, feats: 64, items: 9180 },
-  { id: "p5", nombre: "Indie en espanol", tipo: "ajena", artistas: 70, feats: 12, items: 150 },
-  { id: "p6", nombre: "Novedades Viernes", tipo: "editorial", artistas: 90, feats: 40, items: 100 },
+  { id: "p5", nombre: "Indie en espanol", tipo: "ajena", artistas: 70, feats: 12, items: 150, duenio: "un amigo" },
+  { id: "p6", nombre: "Novedades Viernes", tipo: "ajena", artistas: 90, feats: 40, items: 100, duenio: "Spotify" },
 ];
-const ARTISTS = ["Babasonicos","Bandalos Chinos","Conociendo Rusia","Dillom","El Mato a un Policia Motorizado","Emilia","Fito Paez","Francisca y los Exploradores","Juana Molina","Lali","Los Espiritus","Marilina Bertoldi","Nathy Peluso","Nicki Nicole","Paco Amoroso","Ca7riel","Peces Raros","Silvestre y la Naranja","Tan Bionica","Wos","Zoe Gotusso"].map((n, i) => ({ id: "a" + i, nombre: n }));
-const RUN = { cuando: "hoy, 02:41", ok: true, artistas: 143, nuevos: 9, requests: 318 };
-
-let seq = 3;
-const S = {
-  conn: { modo: "own", nombre: "Luca", email: "luca@ejemplo.com" },
-  canales: [
-    { id: "c1", follows: true, seeds: [{ pid: "p1", feats: false }], manual: ["a11", "a16"],
-      target: { kind: "bot", nombre: "Radar rock" }, items: 640, retencion: 4, guardado: true,
-      pend: [["Marilina Bertoldi","Mi Fiesta","Para Quien Trabajas II"],["Peces Raros","Lo Que Queda","Lo Que Queda"],["Babasonicos","Tormento","Tormento"],["Los Espiritus","Rio Arriba","Rio Arriba"]],
-      entrega: { cuando: "vie 18 sep", ok: true, ins: 23, ret: 18 } },
-    { id: "c2", follows: false, seeds: [{ pid: "p3", feats: true }], manual: ["a13", "a18"],
-      target: { kind: "existing", pid: "p4", nombre: "Todo lo que escuche en 2025" }, items: 9180, retencion: "acum", guardado: false,
-      pend: [["Nicki Nicole","Dispara","Dispara"],["Paco Amoroso","Tu Madre","Tu Madre (feat. Ca7riel)"]],
-      entrega: { cuando: "vie 18 sep", ok: false, ins: 7, ret: 0, error: "Spotify respondio 502 en el Track 8 de 15. Se reintenta manana." } },
-  ],
-  ui: { v: "A", debug: false, login: null, own: { cid: "", secret: "" }, confirm: null, flash: null,
-        A: { screen: "home", step: 0, cid: null }, B: { cid: "c1" }, C: { open: null } },
-};
-const VARIANTS = { A: "Asistente", B: "Panel", C: "Frase" };
+const ARTISTS = ["Babasonicos", "Bandalos Chinos", "Conociendo Rusia", "Dillom", "El Mato a un Policia Motorizado", "Emilia", "Fito Paez", "Francisca y los Exploradores", "Juana Molina", "Lali", "Los Espiritus", "Marilina Bertoldi", "Nathy Peluso", "Nicki Nicole", "Paco Amoroso", "Ca7riel", "Peces Raros", "Silvestre y la Naranja", "Tan Bionica", "Wos", "Zoe Gotusso"].map((n, i) => ({ id: "a" + i, nombre: n }));
+const REDIRECT = "https://spotify-new-releases.onrender.com/callback";
+const RUN = { cuando: "hoy, 02:41", ok: true, artistas: 0, nuevos: 0 };
 
 // ---------- helpers ----------
 const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 const P = id => PLAYLISTS.find(p => p.id === id);
 const A = id => ARTISTS.find(a => a.id === id);
+const AN = n => ARTISTS.find(a => a.nombre === n);
+const hue = s => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.codePointAt(0)) % 360; return h; };
+const initial = s => { const m = String(s).match(/[A-Za-z0-9]/); return m ? m[0].toUpperCase() : "#"; };
+const cover = (name, size, h) => `<div class="cover" style="--h:${h ?? hue(name)};width:${size}px;height:${size}px"><span style="font-size:${Math.round(size * .62)}px">${esc(initial(name))}</span></div>`;
+const avatar = (name, size = 28) => `<span class="avatar" style="--h:${hue(name)};width:${size}px;height:${size}px">${esc(initial(name))}</span>`;
+const sw = (on, act, c, extra = "", n = "Interruptor") => `<button class="sw" role="switch" aria-checked="${on}" data-act="${act}" data-c="${c}" ${extra} data-n="${n}"></button>`;
+
+let seq = 3;
+const S = {
+  user: null, sim: "registrado", screen: "login",
+  own: { cid: "", secret: "" },
+  canales: [],
+  ui: { v: "B1", names: false, debug: false, sel: "c1", tab: "semana", drawer: null, open: "artistas", confirm: null, flash: null },
+};
+const VARIANTS = { B1: "Biblioteca", B2: "Tablero", B3: "Ajustes" };
 const C = id => S.canales.find(c => c.id === id);
 const nombre = c => c.target.nombre || "Sin nombre";
+const canalHue = c => c.hue ?? hue(nombre(c));
+
 function whitelist(c) {
-  let n = c.follows ? FOLLOWS : 0;
-  c.seeds.forEach(s => { const p = P(s.pid); n += p.artistas + (s.feats ? p.feats : 0); });
+  let n = c.follows ? PERFIL.follows : 0;
+  c.seeds.forEach(s => { const p = P(s.pid); if (p) n += p.artistas + (s.feats ? p.feats : 0); });
   return n + c.manual.length;
 }
 function retText(c) {
   if (c.target.kind === "existing" || c.retencion === "acum") return "todo, nunca retiro";
   return c.retencion === 1 ? "solo la ultima semana" : `las ultimas ${c.retencion} semanas`;
 }
+function srcText(c) {
+  const p = [c.follows && `${PERFIL.follows} que seguis`, c.seeds.length && `${c.seeds.length} playlist${c.seeds.length > 1 ? "s" : ""}`, c.manual.length && `${c.manual.length} a mano`].filter(Boolean);
+  return p.length ? p.join(" + ") : "ninguno todavia";
+}
+// Entrega: viernes 02:37 ART = 05:37 UTC
 function nextFriday() {
-  const d = new Date(); const add = (5 - d.getDay() + 7) % 7; d.setDate(d.getDate() + add);
-  // 02:37 ART = 05:37 UTC
-  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 5, 37));
+  const now = new Date(); const d = new Date(now);
+  d.setUTCDate(d.getUTCDate() + ((5 - d.getUTCDay() + 7) % 7)); d.setUTCHours(5, 37, 0, 0);
+  if (d <= now) d.setUTCDate(d.getUTCDate() + 7);
+  return d;
 }
 const FRI = nextFriday();
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const friDay = FRI.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
 const friTime = FRI.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-const cap = c => c.target.kind === "existing" ? P(c.target.pid).items : c.items;
+function left() { const ms = FRI - new Date(); const h = Math.max(0, Math.floor(ms / 36e5)); return { d: Math.floor(h / 24), h: h % 24, m: Math.max(0, Math.floor(ms / 6e4) % 60) }; }
+const totalPend = () => S.canales.reduce((n, c) => n + c.pend.length, 0);
+const cap = c => c.target.kind === "existing" ? (P(c.target.pid)?.items ?? 0) : c.items;
+
 function capMeter(c) {
   const n = cap(c), pct = Math.min(100, n / 100);
   const cls = pct >= 95 ? "crit" : pct >= 90 ? "warn" : "";
-  const msg = pct >= 95 ? `Casi llena: ${n} de 10.000. Spotify no deja pasar de 10.000; lo que no entre se descarta.`
-    : pct >= 90 ? `${n} de 10.000 Tracks (${Math.round(pct)}%). Se esta llenando.` : `${n} de 10.000 Tracks`;
-  return `<div class="stack" style="gap:6px"><div class="meter ${cls}"><i style="width:${pct}%"></i></div><small class="nums">${msg}</small></div>`;
+  const msg = pct >= 95 ? `Casi llena: ${n.toLocaleString("es-AR")} de 10.000. Lo que no entre se descarta.`
+    : pct >= 90 ? `${n.toLocaleString("es-AR")} de 10.000 Tracks. Se esta llenando.` : `${n.toLocaleString("es-AR")} de 10.000 Tracks`;
+  return `<div class="stack" style="gap:6px" data-n="Medidor de tope"><div class="meter ${cls}"><i style="width:${Math.max(pct, 1)}%"></i></div><small class="nums">${msg}</small></div>`;
 }
-const pendPill = c => c.pend.length ? `<span class="pill accent nums">${c.pend.length} esperando</span>` : `<span class="pill">nada nuevo aun</span>`;
-const entregaPill = c => !c.entrega ? `<span class="pill">sin Entregas</span>` : c.entrega.ok ? `<span class="pill ok">Entrega ok</span>` : `<span class="pill crit">Entrega fallo</span>`;
+const pendPill = c => c.pend.length ? `<span class="pill ok nums" data-n="Etiqueta"><i></i>${c.pend.length} esperando</span>` : `<span class="pill" data-n="Etiqueta">nada nuevo aun</span>`;
+const entregaPill = c => !c.entrega ? `<span class="pill" data-n="Etiqueta">sin Entregas</span>` : c.entrega.ok ? `<span class="pill ok" data-n="Etiqueta">ultima Entrega ok</span>` : `<span class="pill crit" data-n="Etiqueta"><i></i>ultima Entrega fallo</span>`;
+const flash = () => S.ui.flash ? `<div class="aviso ok" data-n="Aviso">${esc(S.ui.flash)}</div>` : "";
 
-// ---------- editores compartidos ----------
-function edSources(c) {
-  const seedRows = PLAYLISTS.map(p => {
-    const ok = p.tipo === "propia" || p.tipo === "colaborativa";
-    const s = c.seeds.find(x => x.pid === p.id);
-    const isTarget = S.canales.some(k => k.target.pid === p.id);
-    return `<div class="opt ${ok ? "" : "off"}">
-      <input type="checkbox" id="seed-${c.id}-${p.id}" data-act="seed" data-c="${c.id}" data-p="${p.id}" ${s ? "checked" : ""} ${ok ? "" : "disabled"}>
-      <div class="grow"><label for="seed-${c.id}-${p.id}">${esc(p.nombre)}</label>
-        <div class="row wrap center" style="gap:6px"><span class="pill">${p.tipo}</span><small class="nums">${p.artistas} artistas</small>
-        ${ok ? "" : `<small>No sirve: Spotify solo deja leer playlists tuyas o colaborativas.</small>`}
-        ${isTarget ? `<small>Es la playlist de un Canal: sus artistas crecen solos.</small>` : ""}</div>
-        ${s ? `<label class="row center" style="gap:6px;margin-top:4px"><input type="checkbox" id="feat-${c.id}-${p.id}" data-act="feats" data-c="${c.id}" data-p="${p.id}" ${s.feats ? "checked" : ""}><small>Sumar tambien los invitados (feats), +${p.feats} artistas</small></label>` : ""}
-      </div></div>`;
+// ---------- piezas compartidas ----------
+function trackRows(c, head = false) {
+  if (!c.pend.length) return `<p class="muted">Nada nuevo esta semana todavia. El bot revisa todos los dias.</p>`;
+  return `<div class="lote" data-n="Lote">
+    ${head ? `<div class="tl-head"><span>#</span><span></span><span>Titulo</span><span>Release</span></div>` : ""}
+    ${c.pend.map((t, i) => `<div class="track" data-n="Fila de Track"><span class="n nums">${i + 1}</span>${cover(t[2], 40, hue(t[2]))}
+      <span class="ellip"><b class="ellip">${esc(t[1])}</b><small class="ellip">${esc(t[0])}</small></span><small class="ellip" style="max-width:180px">${esc(t[2])}</small></div>`).join("")}</div>`;
+}
+function ultimaEntrega(c) {
+  const e = c.entrega;
+  if (!e) return `<p class="muted" data-n="Ultima Entrega">Este Canal todavia no tuvo ninguna Entrega.</p>`;
+  return `<div class="stack" style="gap:8px" data-n="Ultima Entrega"><div class="row wrap">${entregaPill(c)}<small class="nums">${e.cuando} &middot; +${e.ins} agregados &middot; &minus;${e.ret} retirados</small></div>
+    ${e.error ? `<div class="aviso crit">${esc(e.error)}</div>` : ""}</div>`;
+}
+function edArtistas(c) {
+  const seedCards = PLAYLISTS.map(p => {
+    const ok = p.tipo !== "ajena";
+    const on = c.seeds.some(s => s.pid === p.id);
+    const other = S.canales.find(k => k.target.pid === p.id);
+    return `<button class="seed ${on ? "on" : ""} ${ok ? "" : "off"}" data-act="seed" data-c="${c.id}" data-p="${p.id}" ${ok ? "" : "disabled"} aria-pressed="${on}" data-n="Tarjeta de Seed Playlist"
+      title="${ok ? "" : "Spotify solo deja leer playlists tuyas o colaborativas"}">
+      ${cover(p.nombre, 120, hue(p.id))}${on ? `<span class="tick">&#10003;</span>` : ""}
+      <span class="nm ellip">${esc(p.nombre)}</span>
+      <small class="nums">${ok ? `${p.artistas} artistas` : `de ${esc(p.duenio)}, no se puede leer`}${other ? " &middot; es Target" : ""}</small></button>`;
   }).join("");
-  return `<div class="stack">
-    <div class="opt"><input type="checkbox" id="fol-${c.id}" data-act="follows" data-c="${c.id}" ${c.follows ? "checked" : ""}>
-      <div class="grow"><label for="fol-${c.id}"><b>Artistas que seguis en Spotify</b></label><br><small class="nums">${FOLLOWS} artistas. Si seguis a alguien nuevo, entra solo.</small></div></div>
-    <div><div class="eyebrow">Desde tus playlists</div>${seedRows}</div>
-    <div class="stack" style="gap:8px"><div class="eyebrow">A mano</div>
-      <div class="chips">${c.manual.map(id => `<span class="chip">${esc(A(id).nombre)}<button data-act="man-rm" data-c="${c.id}" data-a="${id}" aria-label="Quitar ${esc(A(id).nombre)}">&times;</button></span>`).join("") || `<small>Ninguno todavia.</small>`}</div>
-      <input type="text" id="search-${c.id}" data-search="${c.id}" placeholder="Buscar un artista para sumar..." autocomplete="off">
+  const featRows = c.seeds.map(s => { const p = P(s.pid); return p ? `<div class="row" data-n="Interruptor Feats">${sw(s.feats, "feats", c.id, `data-p="${p.id}"`)}<span class="grow">Sumar tambien los feats de <b>${esc(p.nombre)}</b></span><small class="nums">+${p.feats}</small></div>` : ""; }).join("");
+  return `<div class="stack" style="gap:20px" data-n="Editor de Artistas">
+    <div class="fuente" data-n="Fuente Follows">${sw(c.follows, "follows", c.id)}<div class="grow"><b>Artistas que seguis en Spotify</b><br>
+      <small class="nums">${PERFIL.follows ? `${PERFIL.follows} artistas. Si seguis a alguien nuevo, entra solo.` : "No seguis a ningun artista todavia. Si empezas a seguir, entran solos."}</small></div></div>
+    <div class="stack" style="gap:10px"><div class="eyebrow">Desde tus playlists</div>
+      <div class="seeds" data-n="Seed Playlists">${seedCards}</div>
+      ${featRows ? `<div class="feats">${featRows}</div>` : ""}</div>
+    <div class="stack" style="gap:10px" data-n="Artistas a mano"><div class="eyebrow">A mano</div>
+      <div class="row wrap" style="gap:6px">${c.manual.map(id => `<span class="chip" data-n="Ficha de artista">${avatar(A(id).nombre, 26)}${esc(A(id).nombre)}<button data-act="man-rm" data-c="${c.id}" data-a="${id}" aria-label="Quitar ${esc(A(id).nombre)}">&times;</button></span>`).join("") || `<small>Ninguno todavia.</small>`}</div>
+      <input type="search" id="search-${c.id}" data-search="${c.id}" placeholder="Buscar un artista para sumar" autocomplete="off" data-n="Buscador de artistas">
       <div id="res-${c.id}"></div></div>
-    <div class="note nums">Total: <b>~${whitelist(c)} artistas</b> vigilados en este Canal. Solo cuenta el artista principal de cada tema${c.seeds.some(s => s.feats) ? ", mas los feats donde lo pediste" : ""}.</div>
+    <div class="aviso nums" data-n="Total de Whitelist">Este Canal vigila <b>~${whitelist(c)} artistas</b>. De cada tema cuenta el artista principal${c.seeds.some(s => s.feats) ? ", y los feats donde lo pediste" : ""}.</div>
   </div>`;
 }
 function searchResults(cid, q) {
   const c = C(cid); q = q.trim().toLowerCase();
   if (!q) return "";
-  const hits = ARTISTS.filter(a => a.nombre.toLowerCase().includes(q) && !c.manual.includes(a.id)).slice(0, 5);
+  const hits = ARTISTS.filter(a => a.nombre.toLowerCase().includes(q) && !c.manual.includes(a.id)).slice(0, 6);
   if (!hits.length) return `<small>No encontre "${esc(q)}" en Spotify.</small>`;
-  return `<div class="results">${hits.map(a => `<button data-act="man-add" data-c="${cid}" data-a="${a.id}">+ ${esc(a.nombre)}</button>`).join("")}</div>`;
+  return `<div class="results">${hits.map(a => `<button data-act="man-add" data-c="${cid}" data-a="${a.id}">${avatar(a.nombre, 28)}${esc(a.nombre)}</button>`).join("")}</div>`;
 }
-function edTarget(c) {
+function edPlaylist(c) {
   const bot = c.target.kind === "bot";
-  const own = PLAYLISTS.filter(p => p.tipo === "propia" || p.tipo === "colaborativa");
+  const own = PLAYLISTS.filter(p => p.tipo !== "ajena");
   const list = own.map(p => {
     const other = S.canales.find(k => k.id !== c.id && k.target.pid === p.id);
-    return `<div class="opt ${other ? "off" : ""}"><input type="radio" name="tp-${c.id}" id="tp-${c.id}-${p.id}" data-act="t-pick" data-c="${c.id}" data-p="${p.id}" ${c.target.pid === p.id ? "checked" : ""} ${other ? "disabled" : ""}>
-      <div class="grow"><label for="tp-${c.id}-${p.id}">${esc(p.nombre)}</label><br><small class="nums">${p.items} Tracks${other ? ` &middot; ya es la playlist de "${esc(nombre(other))}"` : ""}</small></div></div>`;
+    return `<button class="opt ${c.target.pid === p.id ? "on" : ""}" data-act="t-pick" data-c="${c.id}" data-p="${p.id}" ${other ? "disabled" : ""}>${cover(p.nombre, 36, hue(p.id))}
+      <span class="grow"><b class="ellip" style="display:block">${esc(p.nombre)}</b><small class="nums">${p.items.toLocaleString("es-AR")} Tracks${other ? ` &middot; ya es de "${esc(nombre(other))}"` : ""}</small></span></button>`;
   }).join("");
-  return `<div class="stack">
-    <div class="opt"><input type="radio" name="tk-${c.id}" id="tk-${c.id}-bot" data-act="t-kind" data-c="${c.id}" data-k="bot" ${bot ? "checked" : ""}>
-      <div class="grow"><label for="tk-${c.id}-bot"><b>Que el bot cree una playlist nueva</b></label><br><small>Lo nuevo aparece arriba de todo. Podes elegir cuantas semanas guarda.</small>
-      ${bot ? `<div style="margin-top:8px"><input type="text" id="tname-${c.id}" data-name="${c.id}" value="${esc(c.target.nombre)}" placeholder="Nombre de la playlist"><small>Podes renombrarla despues en Spotify, no se pierde.</small></div>` : ""}</div></div>
-    <div class="opt"><input type="radio" name="tk-${c.id}" id="tk-${c.id}-ex" data-act="t-kind" data-c="${c.id}" data-k="existing" ${bot ? "" : "checked"}>
-      <div class="grow"><label for="tk-${c.id}-ex"><b>Usar una playlist que ya tengo</b></label><br><small>Lo nuevo se suma al final y el bot nunca borra nada.</small>
-      ${bot ? "" : `<div style="margin-top:6px">${list}</div>`}</div></div>
+  return `<div class="stack" style="gap:16px" data-n="Editor de Playlist">
+    <div class="seg" data-n="Selector de Target"><button class="${bot ? "on" : ""}" data-act="t-kind" data-c="${c.id}" data-k="bot">Una nueva del bot</button><button class="${bot ? "" : "on"}" data-act="t-kind" data-c="${c.id}" data-k="existing">Una que ya tengo</button></div>
+    ${bot ? `<div class="stack" style="gap:6px"><label for="tname-${c.id}"><b>Nombre</b></label><input type="text" id="tname-${c.id}" data-name="${c.id}" value="${esc(c.target.nombre)}" data-n="Nombre de playlist"><small>Lo nuevo aparece arriba de todo. Si la renombras en Spotify no se pierde.</small></div>`
+      : `<div class="stack" style="gap:4px" data-n="Selector de playlist existente"><small>Lo nuevo se suma al final y el bot nunca borra nada.</small>${list}</div>`}
     ${capMeter(c)}
   </div>`;
 }
-function edRet(c) {
-  if (c.target.kind === "existing") return `<div class="note">En una playlist que ya tenias el bot solo suma: nunca retira Tracks. Para que se renueve sola, deja que el bot cree una.</div>`;
-  const opts = [1, 2, 3, 4, 6, 8, 12].map(n => `<option value="${n}" ${c.retencion === n ? "selected" : ""}>${n === 1 ? "Solo la ultima semana" : `Las ultimas ${n} semanas`}</option>`).join("");
-  return `<div class="stack" style="gap:6px"><label for="ret-${c.id}"><b>Que queda en la playlist</b></label>
-    <select id="ret-${c.id}" data-act="ret" data-c="${c.id}">${opts}<option value="acum" ${c.retencion === "acum" ? "selected" : ""}>Todo, que se acumule</option></select>
-    <small>${c.retencion === 1 ? "Cada viernes la playlist se renueva entera." : c.retencion === "acum" ? "Nunca se retira nada. Cerca de 9.500 Tracks se van las semanas mas viejas." : `Cada viernes entra la semana nueva y sale la de hace ${c.retencion}. Solo se retira lo que puso el bot.`}</small></div>`;
+function edRetencion(c) {
+  if (c.target.kind === "existing") return `<div class="aviso" data-n="Editor de Retencion">En una playlist que ya tenias el bot solo suma, nunca retira. Para que se renueve sola, deja que el bot cree una.</div>`;
+  const opts = [1, 2, 4, 8, 12].map(n => `<button class="${c.retencion === n ? "on" : ""}" data-act="ret" data-c="${c.id}" data-r="${n}">${n === 1 ? "1 semana" : `${n} semanas`}</button>`).join("");
+  return `<div class="stack" style="gap:10px" data-n="Editor de Retencion">
+    <div class="seg" data-n="Selector de Retencion">${opts}<button class="${c.retencion === "acum" ? "on" : ""}" data-act="ret" data-c="${c.id}" data-r="acum">Todo</button></div>
+    <small>${c.retencion === 1 ? "Cada viernes la playlist se renueva entera." : c.retencion === "acum" ? "Nunca se retira nada. Cerca de 9.500 Tracks salen las semanas mas viejas." : `Cada viernes entra la semana nueva y sale la de hace ${c.retencion}. Solo se retira lo que puso el bot.`}</small></div>`;
 }
 function edGuardado(c) {
-  return `<div class="opt"><input type="checkbox" id="g-${c.id}" data-act="guardado" data-c="${c.id}" ${c.guardado ? "checked" : ""}>
-    <div class="grow"><label for="g-${c.id}"><b>Saltear lo que ya tengo guardado</b></label><br><small>Si ya tenes todos los temas de un lanzamiento en tus likes o en tus playlists, no se agrega.</small></div></div>`;
-}
-function runBlock(c) {
-  const e = c.entrega;
-  return `<div class="stack">
-    <div class="row center wrap">${pendPill(c)}<small>salen el ${friDay}, ${friTime}</small></div>
-    ${c.pend.length ? `<ul class="tracks">${c.pend.map(t => `<li><span class="grow"><b>${esc(t[1])}</b> &middot; ${esc(t[0])}</span><small>${esc(t[2])}</small></li>`).join("")}</ul>` : ""}
-    ${e ? `<div class="row center wrap">${entregaPill(c)}<small class="nums">${e.cuando}: +${e.ins} agregados, &minus;${e.ret} retirados</small></div>${e.error ? `<div class="note crit">${esc(e.error)}</div>` : ""}` : ""}
-  </div>`;
-}
-function scheduleLine() {
-  return `El bot revisa todos los dias. Lo nuevo espera y entra a tus playlists los <b>viernes a las ${friTime}</b> <span class="muted">(tu hora, ${esc(TZ)})</span>.`;
-}
-function lastRunLine() {
-  return `Ultima revision: ${RUN.cuando} &middot; ${RUN.artistas} artistas revisados &middot; ${RUN.nuevos} Tracks nuevos ${RUN.ok ? `<span class="pill ok">ok</span>` : `<span class="pill crit">fallo</span>`}`;
+  return `<div class="fuente" data-n="Interruptor Guardado">${sw(c.guardado, "guardado", c.id)}<div class="grow"><b>Saltear lo que ya tengo guardado</b><br><small>Si ya tenes todos los temas de un lanzamiento en tus likes o tus playlists, no se agrega.</small></div></div>`;
 }
 function confirmBox(c) {
   if (S.ui.confirm !== c.id) return "";
-  return `<div class="confirm stack"><b>Desvincular "${esc(nombre(c))}"</b><p>El Canal se borra con su lista de artistas y lo que estaba esperando al viernes. La playlist queda en tu Spotify salvo que elijas borrarla.</p>
+  return `<div class="confirm" data-n="Confirmacion de desvincular"><b>Desvincular "${esc(nombre(c))}"</b><p class="muted">Se borra el Canal con su lista de artistas y lo que esperaba al viernes. La playlist queda en tu Spotify salvo que elijas borrarla.</p>
     <div class="row wrap"><button class="btn" data-act="unlink" data-c="${c.id}" data-del="0">Borrar Canal, dejar playlist</button>
-    <button class="btn danger" data-act="unlink" data-c="${c.id}" data-del="1">Borrar Canal y playlist</button>
-    <button class="btn link" data-act="cancel">Cancelar</button></div></div>`;
+    <button class="btn peligro" data-act="unlink" data-c="${c.id}" data-del="1">Borrar Canal y playlist</button>
+    <button class="btn fantasma" data-act="cancel">Cancelar</button></div></div>`;
 }
-const flash = () => S.ui.flash ? `<div class="note">${esc(S.ui.flash)}</div>` : "";
-function ownSteps() {
-  return `<ol class="steps">
-    <li>Entra a <b>developer.spotify.com/dashboard</b> con tu cuenta y toca <b>Create app</b>.</li>
-    <li>Nombre y descripcion: lo que quieras. En <b>Redirect URIs</b> pega exactamente esto:
-      <div class="copybox" style="margin-top:6px"><code id="redir">${REDIRECT}</code><button class="btn" data-act="copy">Copiar</button></div></li>
-    <li>En <b>Which API/SDKs</b> marca <b>Web API</b> y guarda.</li>
-    <li>En <b>Settings &rsaquo; User Management</b> agrega tu propio email de Spotify.</li>
-    <li>Copia el <b>Client ID</b> y el <b>Client secret</b> y pegalos aca.</li></ol>`;
-}
-function ownForm() {
-  const o = S.ui.own;
-  return `<div class="stack">
-    <div><label for="own-cid"><b>Client ID</b></label><input type="text" id="own-cid" data-own="cid" value="${esc(o.cid)}" class="mono" placeholder="32 caracteres"></div>
-    <div><label for="own-sec"><b>Client secret</b></label><input type="password" id="own-sec" data-own="secret" value="${esc(o.secret)}" class="mono"></div>
-    <div class="note warn">Necesitas <b>Spotify Premium</b>: Spotify apaga las apps cuyo dueno no lo tiene.</div>
-    <button class="btn primary" data-act="login-own">Conectar con mi app</button></div>`;
-}
-const sharedNote = `Luca tiene que agregar tu email de Spotify a mano antes de que entres. Mandaselo y espera a que te avise: hasta entonces Spotify te va a rechazar. Hay 4 lugares en total.`;
+const desvincular = c => `<button class="btn peligro" data-act="ask-unlink" data-c="${c.id}" data-n="Boton Desvincular">Desvincular</button>`;
 
-// ---------- A: Asistente ----------
-const STEPS = ["Artistas", "Playlist", "Que guarda", "Listo"];
-function vA() {
-  if (!S.conn) return aLogin();
-  const a = S.ui.A;
-  if (a.screen === "wizard" && C(a.cid)) return aWizard(C(a.cid));
-  return `<div class="a">
-    <div class="row center"><div class="grow"><div class="eyebrow">Hola, ${esc(S.conn.nombre)}</div><h1>Tus Canales</h1></div>
-      <small>${S.conn.modo === "own" ? "Tu propia app" : "App compartida"}</small></div>
-    <div class="a-hero"><span>Proxima Entrega</span><span class="big">${friDay}</span><span>${friTime} tu hora &middot; ${S.canales.reduce((n, c) => n + c.pend.length, 0)} Tracks esperando</span></div>
-    ${flash()}
-    <div class="a-list">${S.canales.map(c => `<div class="a-item"><div class="grow"><h3>${esc(nombre(c))}</h3>
-      <small class="nums">~${whitelist(c)} artistas &middot; guarda ${retText(c)}</small><div class="row wrap" style="gap:6px;margin-top:4px">${pendPill(c)}${entregaPill(c)}</div></div>
-      <button class="btn" data-act="a-open" data-c="${c.id}">Editar</button></div>`).join("")}
-      ${S.canales.length ? "" : `<div class="a-item"><small>Todavia no armaste ningun Canal.</small></div>`}</div>
-    <button class="btn primary" data-act="new" ${S.canales.length >= 5 ? "disabled" : ""}>+ Armar un Canal nuevo</button>
-    <small class="nums">${S.canales.length} de 5 Canales. Cada Canal es una playlist con su propia lista de artistas.</small>
-    <div class="stack"><small>${scheduleLine()}</small><small>${lastRunLine()}</small></div>
-  </div>`;
-}
-function aWizard(c) {
-  const st = S.ui.A.step;
-  const body = [
-    () => `<h2>De que artistas queres lo nuevo?</h2>${edSources(c)}`,
-    () => `<h2>Donde lo pongo?</h2>${edTarget(c)}`,
-    () => `<h2>Que guarda la playlist?</h2>${edRet(c)}${edGuardado(c)}`,
-    () => `<h2>${esc(nombre(c))}</h2><dl class="a-review">
-      <dt>Artistas</dt><dd class="nums">~${whitelist(c)}: ${[c.follows && "los que seguis", c.seeds.length && `${c.seeds.length} playlist${c.seeds.length > 1 ? "s" : ""}`, c.manual.length && `${c.manual.length} a mano`].filter(Boolean).join(", ") || "ninguno"}</dd>
-      <dt>Playlist</dt><dd>${c.target.kind === "bot" ? "Nueva, la crea el bot" : "Una que ya tenias"}</dd>
-      <dt>Guarda</dt><dd>${retText(c)}</dd><dt>Guardados</dt><dd>${c.guardado ? "Los salteo" : "Los agrego igual"}</dd>
-      <dt>Esta semana</dt><dd>${runBlock(c)}</dd></dl>
-      <div style="margin-top:16px">${S.ui.confirm === c.id ? confirmBox(c) : `<button class="btn link" data-act="ask-unlink" data-c="${c.id}" style="color:var(--crit)">Desvincular este Canal</button>`}</div>`,
-  ][st]();
-  return `<div class="a">
-    <div class="row center"><button class="btn link" data-act="a-home">&larr; Tus Canales</button><span class="grow"></span><small>Paso ${st + 1} de 4: ${STEPS[st]}</small></div>
-    <div class="a-progress">${STEPS.map((_, i) => `<i class="${i <= st ? "on" : ""}"></i>`).join("")}</div>
-    <div class="a-card stack">${body}</div>
-    <div class="a-nav"><button class="btn" data-act="a-step" data-d="-1" ${st === 0 ? "disabled" : ""}>Atras</button>
-      ${st < 3 ? `<button class="btn primary" data-act="a-step" data-d="1">Siguiente</button>` : `<button class="btn primary" data-act="a-home">Guardar</button>`}</div>
-  </div>`;
-}
-function aLogin() {
-  const pick = S.ui.login;
-  return `<div class="a">
-    <div class="stack"><div class="eyebrow">Radar de Viernes</div><h1>Lo nuevo de tus artistas, todos los viernes en tu Spotify.</h1></div>
-    <div class="a-progress"><i class="on"></i><i class="${pick ? "on" : ""}"></i><i></i></div>
-    <h2>Como te conectas?</h2>
-    <div class="a-choice">
-      <button class="a-tile ${pick === "own" ? "on" : ""}" data-act="pick" data-m="own"><span class="pill accent">Recomendado</span><h3>Con mi propia app de Spotify</h3><small>5 minutos de setup, una vez. Necesitas Premium.</small></button>
-      <button class="a-tile ${pick === "shared" ? "on" : ""}" data-act="pick" data-m="shared"><h3>Con la app de Luca</h3><small>Sin setup, pero Luca te tiene que habilitar a mano.</small></button>
+// ---------- barra lateral comun ----------
+function side(sel) {
+  return `<aside class="side" data-n="Barra lateral">
+    <div class="card perfil" data-n="Perfil">${avatar(PERFIL.nombre, 36)}<div class="grow"><b>${esc(PERFIL.nombre)}</b><br><small>@${esc(PERFIL.handle)}</small></div>
+      <button class="btn fantasma" data-act="logout" style="padding:4px 8px">Salir</button></div>
+    <div class="card biblio" data-n="Lista de Canales">
+      <div class="biblio-head"><span class="eyebrow">Tus Canales &middot; ${S.canales.length}/5</span>
+        <button class="btn fantasma" data-act="new" ${S.canales.length >= 5 ? "disabled" : ""} data-n="Boton Nuevo Canal" style="padding:4px 10px;font-size:20px;line-height:1" aria-label="Nuevo Canal">+</button></div>
+      ${S.canales.map(k => `<button class="canal-row ${sel && k.id === sel.id ? "on" : ""}" data-act="sel" data-c="${k.id}" data-n="Fila de Canal">${cover(nombre(k), 44, canalHue(k))}
+        <span class="grow"><span class="nm ellip" style="display:block">${esc(nombre(k))}</span><small class="nums">${k.pend.length ? `${k.pend.length} esperando` : "al dia"}</small></span></button>`).join("")}
     </div>
-    ${pick === "own" ? `<div class="a-card stack"><h3>Crea tu app en Spotify</h3>${ownSteps()}${ownForm()}</div>` : ""}
-    ${pick === "shared" ? `<div class="a-card stack"><div class="note warn">${sharedNote}</div><button class="btn primary" data-act="login-shared">Ya me habilito, conectar con Spotify</button></div>` : ""}
-  </div>`;
+    <div class="card horario" data-n="Aviso de horario"><span>El bot revisa todos los dias. Lo nuevo entra a tus playlists los <b>viernes ${friTime}</b> <span class="faint">(${esc(TZ)})</span>.</span>
+      <span class="nums" data-n="Ultima revision">Ultima revision ${RUN.cuando} &middot; ${RUN.nuevos} nuevos ${RUN.ok ? `<span class="pill ok">ok</span>` : `<span class="pill crit">fallo</span>`}</span></div>
+  </aside>`;
+}
+function emptyMain() {
+  return `<main class="card mainp" style="padding:48px 24px" data-n="Panel vacio"><h2 style="font-size:32px;font-weight:900">Sin Canales</h2><p class="muted" style="margin-top:8px">Arma el primero con el + de la izquierda.</p></main>`;
 }
 
-// ---------- B: Panel ----------
-function vB() {
-  if (!S.conn) return bLogin();
-  let c = C(S.ui.B.cid) || S.canales[0];
-  return `<div class="b">
-    <aside class="b-side">
-      <div class="b-who"><div class="eyebrow">Radar de Viernes</div><b>${esc(S.conn.nombre)}</b><small>${S.conn.modo === "own" ? "Tu propia app" : "App compartida"}</small></div>
-      <div class="b-nav">${S.canales.map(k => `<button class="${c && k.id === c.id ? "on" : ""}" data-act="b-sel" data-c="${k.id}"><span>${esc(nombre(k))}</span><small class="nums">${k.pend.length}</small></button>`).join("")}</div>
-      <button class="btn" data-act="new" ${S.canales.length >= 5 ? "disabled" : ""}>+ Nuevo Canal <small class="nums">(${S.canales.length}/5)</small></button>
-      <small>${scheduleLine()}</small><small>${lastRunLine()}</small>
-    </aside>
-    <main class="b-main">${flash()}${c ? `
-      <div class="b-head"><div><div class="eyebrow">Canal</div><h1>${esc(nombre(c))}</h1></div>
-        <div class="row center wrap">${pendPill(c)}${entregaPill(c)}<button class="btn danger" data-act="ask-unlink" data-c="${c.id}">Desvincular</button></div></div>
+// ---------- B1 Biblioteca ----------
+function vB1(c) {
+  const t = S.ui.tab; const lt = left();
+  const tabs = [["semana", "Esta semana"], ["artistas", "Artistas"], ["ajustes", "Playlist y Retencion"]];
+  const body = t === "semana" ? `<div class="b1-grid"><div class="b1-block" style="grid-column:1/-1"><h2>Lo que entra el viernes</h2>${trackRows(c, true)}</div>
+      <div class="b1-block"><h2>Ultima Entrega</h2>${ultimaEntrega(c)}</div></div>`
+    : t === "artistas" ? edArtistas(c)
+    : `<div class="b1-grid"><div class="b1-block"><h2>Playlist</h2>${edPlaylist(c)}</div><div class="b1-block"><h2>Que guarda</h2>${edRetencion(c)}${edGuardado(c)}</div></div>`;
+  return `<main class="card mainp" style="--h:${canalHue(c)}" data-n="Panel">
+    <header class="b1-head" data-n="Cabecera de Canal"><div data-n="Portada">${cover(nombre(c), 200, canalHue(c))}</div>
+      <div class="stack" style="gap:10px;min-width:0"><span class="eyebrow" style="color:rgba(255,255,255,.8)">Canal</span><h1 class="b1-title">${esc(nombre(c))}</h1>
+      <small style="color:rgba(255,255,255,.8)" class="nums"><b style="color:#fff">${esc(PERFIL.nombre)}</b> &middot; ~${whitelist(c)} artistas &middot; guarda ${retText(c)}${c.guardado ? " &middot; saltea Guardados" : ""}</small></div></header>
+    <div class="b1-body">${flash()}
+      <div class="b1-actions" data-n="Proxima Entrega"><span class="play" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4v16l13-8z"/></svg></span>
+        <div><div class="cuenta nums">${c.pend.length} Tracks el ${friDay}</div><small class="nums">faltan ${lt.d} d ${lt.h} h &middot; ${friTime}</small></div>
+        <span class="grow"></span>${entregaPill(c)}${desvincular(c)}</div>
       ${confirmBox(c)}
-      <div class="b-grid">
-        <section class="b-sec"><h2>Artistas</h2>${edSources(c)}</section>
-        <div class="b-col">
-          <section class="b-sec"><h2>Playlist</h2>${edTarget(c)}</section>
-          <section class="b-sec"><h2>Que guarda</h2>${edRet(c)}${edGuardado(c)}</section>
-          <section class="b-sec"><h2>Esta semana</h2>${runBlock(c)}</section>
-        </div>
-      </div>` : `<div class="b-sec"><h2>Sin Canales</h2><p>Arma el primero con "+ Nuevo Canal".</p></div>`}
-    </main></div>`;
+      <div class="tabs" data-n="Pestanas">${tabs.map(([k, l]) => `<button class="${t === k ? "on" : ""}" data-act="tab" data-t="${k}">${l}</button>`).join("")}</div>
+      ${body}
+    </div></main>`;
 }
-function bLogin() {
-  return `<div class="b-login">
-    <section class="b-sec"><span class="pill accent" style="align-self:flex-start">Recomendado</span><h1>Conectar con tu propia app</h1>
-      <p class="muted">Registras una app gratis en Spotify y pegas sus claves. Tus datos no pasan por la cuota de nadie mas.</p>${ownSteps()}${ownForm()}</section>
-    <section class="b-sec"><h2>O con la app de Luca</h2><p class="muted">Sin setup.</p><div class="note warn">${sharedNote}</div>
-      <button class="btn" data-act="login-shared">Conectar con Spotify</button></section>
+
+// ---------- B2 Tablero ----------
+function vB2(c) {
+  const lt = left(); const d = S.ui.drawer;
+  const ret = c.target.kind === "existing" || c.retencion === "acum" ? 12 : c.retencion;
+  const weeks = Array.from({ length: 12 }, (_, i) => `<i class="${c.retencion === "acum" || c.target.kind === "existing" ? "acum" : i < ret ? "on" : ""}"></i>`).join("");
+  const srcAv = [...c.manual.map(id => A(id).nombre), ...c.seeds.map(s => P(s.pid)?.nombre).filter(Boolean)].slice(0, 6);
+  const drawers = { artistas: ["Artistas", edArtistas], playlist: ["Playlist", edPlaylist], retencion: ["Que guarda", c => edRetencion(c) + edGuardado(c)] };
+  return `<main class="card mainp" data-n="Panel"><div class="b2">
+    <section class="b2-hero" data-n="Proxima Entrega"><div class="stack" style="gap:6px"><span class="eyebrow">Proxima Entrega</span><span class="big">${friDay}</span>
+      <span style="font-weight:700" class="nums">${friTime} &middot; ${totalPend()} Tracks esperando en tus ${S.canales.length} Canales</span></div>
+      <div class="clock nums" data-n="Cuenta regresiva"><div><b>${lt.d}</b><small>dias</small></div><div><b>${String(lt.h).padStart(2, "0")}</b><small>horas</small></div><div><b>${String(lt.m).padStart(2, "0")}</b><small>min</small></div></div></section>
+    ${flash()}
+    <div class="b2-canal" data-n="Cabecera de Canal"><div data-n="Portada">${cover(nombre(c), 72, canalHue(c))}</div><div class="grow"><span class="eyebrow">Canal</span><h1 class="ellip">${esc(nombre(c))}</h1></div>${desvincular(c)}</div>
+    ${confirmBox(c)}
+    <div class="bento">
+      <section class="tile lote-t" data-n="Tarjeta de Lote"><div class="lbl"><span class="eyebrow">Esta semana</span>${pendPill(c)}</div>${trackRows(c)}</section>
+      <button class="tile" data-act="drawer" data-d="artistas" data-n="Tarjeta de Artistas"><div class="lbl"><span class="eyebrow">Artistas</span><span class="edit">Editar &rsaquo;</span></div>
+        <span class="k nums">~${whitelist(c)}</span><small>${esc(srcText(c))}</small>${srcAv.length ? `<div class="stackav">${srcAv.map(n => avatar(n, 30)).join("")}</div>` : ""}</button>
+      <button class="tile" data-act="drawer" data-d="playlist" data-n="Tarjeta de Playlist"><div class="lbl"><span class="eyebrow">Playlist</span><span class="edit">Editar &rsaquo;</span></div>
+        <div class="row">${cover(nombre(c), 44, canalHue(c))}<div class="grow"><b class="ellip" style="display:block">${esc(nombre(c))}</b><small>${c.target.kind === "bot" ? "la creo el bot" : "ya la tenias"}</small></div></div>${capMeter(c)}</button>
+      <button class="tile" data-act="drawer" data-d="retencion" data-n="Tarjeta de Retencion"><div class="lbl"><span class="eyebrow">Que guarda</span><span class="edit">Editar &rsaquo;</span></div>
+        <div class="weeks" data-n="Semanas">${weeks}</div><small>${esc(retText(c))}${c.guardado ? " &middot; saltea Guardados" : ""}</small></button>
+      <section class="tile" data-n="Tarjeta de Ultima Entrega"><span class="eyebrow">Ultima Entrega</span>${ultimaEntrega(c)}</section>
+    </div></div></main>
+    ${d && drawers[d] ? `<div class="drawer-bg" data-act="drawer-close"></div><aside class="drawer" data-n="Cajon de edicion"><div class="row"><h2 class="grow">${drawers[d][0]}</h2><button class="btn primario" data-act="drawer-close">Listo</button></div>${drawers[d][1](c)}</aside>` : ""}`;
+}
+
+// ---------- B3 Ajustes ----------
+function vB3(c) {
+  const o = S.ui.open;
+  const rows = [
+    ["artistas", "Artistas", `~${whitelist(c)} &middot; ${esc(srcText(c))}`, edArtistas],
+    ["playlist", "Playlist", `${esc(nombre(c))} &middot; ${c.target.kind === "bot" ? "nueva del bot" : "una que ya tenias"}`, edPlaylist],
+    ["retencion", "Que guarda", esc(retText(c)), edRetencion],
+    ["guardado", "Guardados", c.guardado ? "los salteo" : "los agrego igual", edGuardado],
+  ];
+  return `<main class="card mainp b3" data-n="Panel">
+    <div class="b3-franja" data-n="Franja de Entrega"><span class="big">${friDay}</span><span class="nums">${friTime} &middot; ${totalPend()} Tracks en camino</span></div>
+    <div class="b3-in">${flash()}
+      <div class="b3-head" data-n="Cabecera de Canal"><div data-n="Portada">${cover(nombre(c), 96, canalHue(c))}</div><div class="grow stack" style="gap:6px"><span class="eyebrow">Canal</span><h1>${esc(nombre(c))}</h1><div class="row wrap" style="gap:6px">${pendPill(c)}${entregaPill(c)}</div></div></div>
+      <section class="ajustes" data-n="Lista de ajustes">${rows.map(([k, key, val, ed]) => `<div class="ajuste ${o === k ? "open" : ""}" data-n="Fila de ajuste">
+        <button data-act="open" data-o="${k}" aria-expanded="${o === k}"><span class="key">${key}</span><span class="val ellip nums">${val}</span><span class="chev">&rsaquo;</span></button>
+        ${o === k ? `<div class="body">${ed(c)}</div>` : ""}</div>`).join("")}</section>
+      <section class="stack"><h2>Lo que entra el viernes</h2>${trackRows(c)}</section>
+      <section class="stack"><h2>Ultima Entrega</h2>${ultimaEntrega(c)}</section>
+      <div>${S.ui.confirm === c.id ? confirmBox(c) : desvincular(c)}</div>
+    </div></main>`;
+}
+
+// ---------- Login unico ----------
+function vLogin() {
+  if (S.screen === "alta") return vAlta();
+  return `<div class="login" data-n="Pantalla de login">
+    <div class="marca" data-n="Marca"><i></i>Radar de Viernes</div>
+    <h1 class="frase" data-n="Frase de login">Lo nuevo de <span class="tok">tus artistas</span>, todos los <em>viernes</em> en tu Spotify.</h1>
+    <p class="sub">Elegis de quien, elegis en que playlist. El bot revisa todos los dias y el viernes te deja todo junto.</p>
+    <div class="row wrap" style="gap:16px"><button class="btn primario grande" data-act="login" data-n="Boton Conectar">Conectar con Spotify</button></div>
+  </div>`;
+}
+function vAlta() {
+  const o = S.own;
+  return `<div class="alta" data-n="Pantalla de alta">
+    <div class="marca"><i></i>Radar de Viernes</div>
+    <h1 class="frase" data-n="Frase de alta">Todavia no estas en la lista. <em>Te armas tu propia llave</em> en 5 minutos.</h1>
+    <p class="muted" style="font-size:17px">Spotify deja entrar a pocas personas por app. Creando una app gratis a tu nombre entras sin esperar a nadie. Se hace una sola vez.</p>
+    <ol class="pasos" data-n="Pasos de Own App">
+      <li><div>Entra a <b>developer.spotify.com/dashboard</b> con tu cuenta y toca <b>Create app</b>.</div></li>
+      <li><div>Nombre y descripcion: lo que quieras. En <b>Redirect URIs</b> pega exactamente esto:
+        <div class="copybox" data-n="Caja de redirect"><code id="redir">${REDIRECT}</code><button class="btn" data-act="copy">Copiar</button></div></div></li>
+      <li><div>En <b>Which API/SDKs</b> marca <b>Web API</b> y guarda.</div></li>
+      <li><div>En <b>Settings &rsaquo; User Management</b> agrega tu propio email de Spotify.</div></li>
+      <li><div class="stack">Copia el <b>Client ID</b> y el <b>Client secret</b> y pegalos aca:
+        <div class="claves" data-n="Formulario de claves"><div><label for="own-cid"><small>Client ID</small></label><input type="text" id="own-cid" data-own="cid" value="${esc(o.cid)}" class="mono" placeholder="32 caracteres"></div>
+          <div><label for="own-sec"><small>Client secret</small></label><input type="password" id="own-sec" data-own="secret" value="${esc(o.secret)}" class="mono"></div></div></div></li>
+    </ol>
+    <div class="aviso warn" data-n="Aviso Premium">Necesitas <b>Spotify Premium</b>: Spotify apaga las apps cuyo dueno no lo tiene.</div>
+    <div id="own-err"></div>
+    <div class="row wrap"><button class="btn primario grande" data-act="login-own" data-n="Boton Conectar">Conectar con Spotify</button><button class="btn fantasma" data-act="back">Volver</button></div>
   </div>`;
 }
 
-// ---------- C: Frase ----------
-function tok(c, t, text) {
-  const on = S.ui.C.open && S.ui.C.open.c === c.id && S.ui.C.open.t === t;
-  return `<button class="c-tok ${on ? "on" : ""}" data-act="c-open" data-c="${c.id}" data-t="${t}">${text}</button>`;
+// ---------- render ----------
+function proto() {
+  const v = Object.entries(VARIANTS).map(([k, l]) => `<button class="${S.ui.v === k ? "on" : ""}" data-act="v" data-v="${k}">${k} ${l}</button>`).join("");
+  const sim = !S.user ? `<span class="proto-sep"></span><button class="${S.sim === "registrado" ? "on" : ""}" data-act="sim" data-s="registrado">Registrado</button><button class="${S.sim === "nuevo" ? "on" : ""}" data-act="sim" data-s="nuevo">No registrado</button>` : "";
+  return `${v}<span class="proto-sep"></span><button class="${S.ui.names ? "on" : ""}" data-act="names">Nombres</button><button class="${S.ui.debug ? "on" : ""}" data-act="debug">Estado</button>${S.user ? `<button data-act="logout">Ver login</button>` : ""}${sim}`;
 }
-function vC() {
-  if (!S.conn) return cLogin();
-  const o = S.ui.C.open;
-  const canales = S.canales.map(c => {
-    const src = [c.follows && `los ${FOLLOWS} artistas que seguis`, c.seeds.length && `${c.seeds.length} playlist${c.seeds.length > 1 ? "s" : ""} tuya${c.seeds.length > 1 ? "s" : ""}`, c.manual.length && `${c.manual.length} artista${c.manual.length > 1 ? "s" : ""} a mano`].filter(Boolean);
-    const srcText = src.length ? src.join(" + ") : "(elegi artistas)";
-    const tgt = c.target.kind === "bot" ? `"${esc(nombre(c))}"` : `"${esc(nombre(c))}", que ya tenias,`;
-    const ed = o && o.c === c.id ? { src: edSources, tgt: edTarget, ret: edRet, g: edGuardado }[o.t](c) : "";
-    return `<div class="c-canal">
-      <p class="c-sentence">En ${tok(c, "tgt", tgt)} pongo lo nuevo de ${tok(c, "src", srcText)}, guardo ${tok(c, "ret", retText(c))} y ${tok(c, "g", c.guardado ? "salteo lo que ya tenes" : "no filtro lo que ya tenes")}.</p>
-      ${ed ? `<div class="c-edit">${ed}<div class="row"><span class="grow"></span><button class="btn" data-act="c-close">Listo</button></div></div>` : ""}
-      <div class="c-meta">${pendPill(c)}<span class="nums">~${whitelist(c)} artistas</span>${c.entrega ? `<span class="nums">${c.entrega.cuando}: +${c.entrega.ins} / &minus;${c.entrega.ret}</span>${entregaPill(c)}` : ""}
-        <button class="btn link" data-act="c-open" data-c="${c.id}" data-t="week">ver la semana</button>
-        <button class="btn link" data-act="ask-unlink" data-c="${c.id}" style="color:var(--crit)">desvincular</button></div>
-      ${o && o.c === c.id && o.t === "week" ? `<div class="c-edit">${runBlock(c)}</div>` : ""}
-      ${confirmBox(c)}
-    </div>`;
-  }).join("");
-  return `<div class="c">
-    <div class="stack"><div class="eyebrow">Radar de Viernes &middot; ${esc(S.conn.nombre)}</div>
-      <p class="c-lead">Todos los <b>viernes a las ${friTime}</b> (tu hora) armo tus playlists con lo que salio en la semana. Toca lo subrayado para cambiarlo.</p></div>
-    ${flash()}${canales}
-    <div class="c-canal"><button class="c-tok" style="align-self:flex-start;font-family:var(--display);font-size:22px" data-act="new" ${S.canales.length >= 5 ? "disabled" : ""}>+ Armar otra playlist</button>
-      <small class="nums">${S.canales.length} de 5. ${lastRunLine()}</small></div>
-  </div>`;
-}
-function cLogin() {
-  const pick = S.ui.login || "own";
-  return `<div class="c">
-    <div class="eyebrow">Radar de Viernes</div>
-    <p class="c-sentence">Me conecto con <button class="c-tok ${pick === "own" ? "on" : ""}" data-act="pick" data-m="own">mi propia app de Spotify</button> o con <button class="c-tok ${pick === "shared" ? "on" : ""}" data-act="pick" data-m="shared">la app de Luca</button>.</p>
-    ${pick === "own" ? `<div class="c-edit"><p class="muted">Recomendado. Son 5 minutos una sola vez:</p>${ownSteps()}${ownForm()}</div>`
-      : `<div class="c-edit"><div class="note warn">${sharedNote}</div><button class="btn primary" data-act="login-shared" style="align-self:flex-start">Conectar con Spotify</button></div>`}
-  </div>`;
-}
-
-// ---------- render + acciones ----------
 function render() {
-  document.getElementById("app").innerHTML = { A: vA, B: vB, C: vC }[S.ui.v]();
-  document.getElementById("vlabel").textContent = `${S.ui.v} (${VARIANTS[S.ui.v]})`;
-  document.getElementById("loginbtn").textContent = S.conn ? "Ver login" : "Entrar con ejemplo";
+  let html;
+  if (!S.user) html = vLogin();
+  else {
+    const c = C(S.ui.sel) || S.canales[0];
+    html = `<div class="shell">${side(c)}${c ? { B1: vB1, B2: vB2, B3: vB3 }[S.ui.v](c) : emptyMain()}</div>`;
+  }
+  document.getElementById("app").innerHTML = html;
+  document.getElementById("proto").innerHTML = proto();
+  document.body.classList.toggle("names", S.ui.names);
   const dbg = document.getElementById("debug");
   dbg.hidden = !S.ui.debug;
-  if (S.ui.debug) dbg.textContent = JSON.stringify({ conn: S.conn, canales: S.canales.map(c => ({ ...c, pend: c.pend.length, whitelist: whitelist(c) })), ui: S.ui }, null, 2);
+  if (S.ui.debug) dbg.textContent = JSON.stringify({ user: S.user, sim: S.sim, canales: S.canales.map(c => ({ ...c, pend: c.pend.length, whitelist: whitelist(c) })), ui: S.ui }, null, 2);
   S.ui.flash = null;
+  hideNames();
 }
 function setVariant(v) {
-  S.ui.v = v; S.ui.confirm = null;
+  S.ui.v = v; S.ui.confirm = null; S.ui.drawer = null;
   try { history.replaceState(null, "", "#" + v); } catch (e) {}
   render(); window.scrollTo(0, 0);
 }
-const KEYS = Object.keys(VARIANTS);
-const cycle = d => setVariant(KEYS[(KEYS.indexOf(S.ui.v) + d + KEYS.length) % KEYS.length]);
-let saved = null;
+
+// ---------- Nombres: hover muestra el nombre y la ruta ----------
+const nhl = document.getElementById("nhl"), ntip = document.getElementById("ntip");
+function hideNames() { nhl.hidden = true; ntip.hidden = true; }
+function pathOf(el) { const p = []; for (let e = el; e; e = e.parentElement?.closest("[data-n]")) p.unshift(e.dataset.n); return p; }
+document.addEventListener("mouseover", e => {
+  if (!S.ui.names) return;
+  const el = e.target.closest("[data-n]");
+  if (!el) return hideNames();
+  const r = el.getBoundingClientRect();
+  Object.assign(nhl.style, { left: r.left + scrollX - 2 + "px", top: r.top + scrollY - 2 + "px", width: r.width + 4 + "px", height: r.height + 4 + "px" });
+  nhl.firstChild.textContent = el.dataset.n; nhl.hidden = false;
+  ntip.textContent = pathOf(el).join("  ›  "); ntip.hidden = false;
+});
+
+// ---------- acciones ----------
 function newCanal() {
   const c = { id: "c" + seq++, follows: false, seeds: [], manual: [], target: { kind: "bot", nombre: "Canal " + (S.canales.length + 1) }, items: 0, retencion: 4, guardado: true, pend: [], entrega: null };
-  S.canales.push(c);
-  S.ui.A = { screen: "wizard", step: 0, cid: c.id }; S.ui.B.cid = c.id; S.ui.C.open = { c: c.id, t: "src" };
+  S.canales.push(c); S.ui.sel = c.id; S.ui.tab = "artistas"; S.ui.open = "artistas"; S.ui.drawer = "artistas";
 }
-
 document.addEventListener("click", e => {
+  if (S.ui.names && !e.target.closest(".proto")) {
+    const el = e.target.closest("[data-n]");
+    if (el) { e.preventDefault(); try { navigator.clipboard.writeText(el.dataset.n).catch(() => {}); } catch (x) {} ntip.textContent = `Copiado: ${el.dataset.n}`; ntip.hidden = false; return; }
+  }
   const el = e.target.closest("[data-act]");
-  if (!el || el.tagName === "SELECT") return;
+  if (!el) return;
   const d = el.dataset, c = d.c && C(d.c);
   switch (d.act) {
-    case "v-prev": return cycle(-1);
-    case "v-next": return cycle(1);
+    case "v": return setVariant(d.v);
+    case "names": S.ui.names = !S.ui.names; break;
     case "debug": S.ui.debug = !S.ui.debug; break;
-    case "logout":
-      if (S.conn) { saved = S.conn; S.conn = null; S.ui.login = null; }
-      else { S.conn = saved || { modo: "own", nombre: "Luca", email: "luca@ejemplo.com" }; }
-      break;
-    case "pick": S.ui.login = d.m; break;
+    case "sim": S.sim = d.s; S.screen = "login"; break;
+    case "logout": S.user = null; S.screen = "login"; S.ui.confirm = null; S.ui.drawer = null; break;
+    case "login":
+      if (S.sim === "registrado") { S.user = PERFIL; S.ui.flash = "Conectado. Estas en la lista, entraste directo. (Prototipo: no se llamo a Spotify.)"; }
+      else S.screen = "alta";
+      window.scrollTo(0, 0); break;
+    case "back": S.screen = "login"; break;
     case "login-own":
-      if (!S.ui.own.cid.trim() || !S.ui.own.secret.trim()) { S.ui.flash = null; alertInline("Pega el Client ID y el Client secret de tu app."); return; }
-      S.conn = { modo: "own", nombre: "Luca", email: "luca@ejemplo.com" }; S.ui.flash = "Conectado con tu propia app. (Prototipo: no se llamo a Spotify.)"; break;
-    case "login-shared": S.conn = { modo: "shared", nombre: "Luca", email: "luca@ejemplo.com" }; S.ui.flash = "Conectado con la app de Luca. (Prototipo: no se llamo a Spotify.)"; break;
-    case "copy": {
-      const t = REDIRECT;
-      try { navigator.clipboard.writeText(t).then(() => { el.textContent = "Copiado"; }, () => selectRedir()); } catch (x) { selectRedir(); }
+      if (!S.own.cid.trim() || !S.own.secret.trim()) { document.getElementById("own-err").innerHTML = `<div class="aviso crit">Pega el Client ID y el Client secret de tu app para seguir.</div>`; return; }
+      S.user = PERFIL; S.screen = "login"; S.ui.flash = "Conectado con tu propia app. (Prototipo: no se llamo a Spotify.)"; break;
+    case "copy":
+      try { navigator.clipboard.writeText(REDIRECT).then(() => { el.textContent = "Copiado"; }, selectRedir); } catch (x) { selectRedir(); }
       return;
-    }
-    case "follows": c.follows = el.checked; break;
-    case "seed": if (el.checked) c.seeds.push({ pid: d.p, feats: false }); else c.seeds = c.seeds.filter(s => s.pid !== d.p); break;
-    case "feats": c.seeds.find(s => s.pid === d.p).feats = el.checked; break;
+    case "sel": S.ui.sel = d.c; S.ui.confirm = null; S.ui.drawer = null; break;
+    case "tab": S.ui.tab = d.t; break;
+    case "open": S.ui.open = S.ui.open === d.o ? null : d.o; break;
+    case "drawer": S.ui.drawer = d.d; break;
+    case "drawer-close": S.ui.drawer = null; break;
+    case "follows": c.follows = !c.follows; break;
+    case "seed": if (c.seeds.some(s => s.pid === d.p)) c.seeds = c.seeds.filter(s => s.pid !== d.p); else c.seeds.push({ pid: d.p, feats: false }); break;
+    case "feats": { const s = c.seeds.find(s => s.pid === d.p); s.feats = !s.feats; break; }
     case "man-add": c.manual.push(d.a); break;
     case "man-rm": c.manual = c.manual.filter(x => x !== d.a); break;
     case "t-kind":
       if (d.k === c.target.kind) return;
-      if (d.k === "bot") { c.target = { kind: "bot", nombre: c.target.kind === "bot" ? c.target.nombre : "Canal nuevo" }; c.items = 0; if (c.retencion === "acum") c.retencion = 4; }
-      else { const p = PLAYLISTS.find(p => (p.tipo === "propia" || p.tipo === "colaborativa") && !S.canales.some(k => k.target.pid === p.id)); c.target = { kind: "existing", pid: p.id, nombre: p.nombre }; c.retencion = "acum"; }
+      if (d.k === "bot") { c.target = { kind: "bot", nombre: "Canal nuevo" }; c.items = 0; if (c.retencion === "acum") c.retencion = 4; }
+      else { const p = PLAYLISTS.find(p => p.tipo !== "ajena" && !S.canales.some(k => k.target.pid === p.id)); if (!p) return; c.target = { kind: "existing", pid: p.id, nombre: p.nombre }; c.retencion = "acum"; }
       break;
     case "t-pick": c.target = { kind: "existing", pid: d.p, nombre: P(d.p).nombre }; c.retencion = "acum"; break;
-    case "guardado": c.guardado = el.checked; break;
+    case "ret": c.retencion = d.r === "acum" ? "acum" : Number(d.r); break;
+    case "guardado": c.guardado = !c.guardado; break;
     case "new": newCanal(); break;
     case "ask-unlink": S.ui.confirm = d.c; break;
     case "cancel": S.ui.confirm = null; break;
     case "unlink": {
       const n = nombre(c);
-      S.canales = S.canales.filter(k => k.id !== d.c); S.ui.confirm = null; S.ui.A = { screen: "home", step: 0, cid: null };
-      S.ui.B.cid = S.canales[0] && S.canales[0].id; S.ui.C.open = null;
+      S.canales = S.canales.filter(k => k.id !== d.c); S.ui.confirm = null; S.ui.sel = S.canales[0]?.id;
       S.ui.flash = d.del === "1" ? `Canal "${n}" borrado junto con su playlist.` : `Canal "${n}" borrado. La playlist sigue en tu Spotify.`;
       break;
     }
-    case "a-open": S.ui.A = { screen: "wizard", step: 0, cid: d.c }; break;
-    case "a-home": S.ui.A = { screen: "home", step: 0, cid: null }; S.ui.confirm = null; break;
-    case "a-step": S.ui.A.step = Math.max(0, Math.min(3, S.ui.A.step + Number(d.d))); window.scrollTo(0, 0); break;
-    case "b-sel": S.ui.B.cid = d.c; S.ui.confirm = null; break;
-    case "c-open": { const o = S.ui.C.open; S.ui.C.open = o && o.c === d.c && o.t === d.t ? null : { c: d.c, t: d.t }; break; }
-    case "c-close": S.ui.C.open = null; break;
     default: return;
   }
   render();
-});
-document.addEventListener("change", e => {
-  const el = e.target;
-  if (el.dataset.act === "ret") { const c = C(el.dataset.c); c.retencion = el.value === "acum" ? "acum" : Number(el.value); render(); }
 });
 document.addEventListener("input", e => {
   const el = e.target, d = el.dataset;
   if (d.search) document.getElementById("res-" + d.search).innerHTML = searchResults(d.search, el.value);
   if (d.name) C(d.name).target.nombre = el.value;
-  if (d.own) S.ui.own[d.own] = el.value;
+  if (d.own) S.own[d.own] = el.value;
 });
 document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && S.ui.drawer) { S.ui.drawer = null; render(); return; }
   if (e.target.closest("input, textarea, select, [contenteditable]")) return;
-  if (e.key === "ArrowLeft") cycle(-1);
-  if (e.key === "ArrowRight") cycle(1);
+  const K = Object.keys(VARIANTS), i = K.indexOf(S.ui.v);
+  if (S.user && e.key === "ArrowLeft") setVariant(K[(i + 2) % 3]);
+  if (S.user && e.key === "ArrowRight") setVariant(K[(i + 1) % 3]);
+  if (e.key === "n" || e.key === "N") { S.ui.names = !S.ui.names; render(); }
 });
 function selectRedir() { const r = document.createRange(); r.selectNodeContents(document.getElementById("redir")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
-function alertInline(msg) {
-  const b = document.querySelector('[data-act="login-own"]');
-  let n = document.getElementById("own-err");
-  if (!n) { n = document.createElement("div"); n.id = "own-err"; n.className = "note crit"; b.before(n); }
-  n.textContent = msg;
-}
+
+// Canales de ejemplo. Lote y Entregas inventados.
+S.canales = [
+  { id: "c1", hue: 322, follows: true, seeds: [{ pid: "p1", feats: false }], manual: ["a11", "a16"],
+    target: { kind: "bot", nombre: "Radar rock" }, items: 640, retencion: 4, guardado: true,
+    pend: [["Marilina Bertoldi", "Mi Fiesta", "Para Quien Trabajas II"], ["Peces Raros", "Lo Que Queda", "Lo Que Queda"], ["Babasonicos", "Tormento", "Tormento"], ["Los Espiritus", "Rio Arriba", "Rio Arriba"]],
+    entrega: { cuando: "vie 25 sep", ok: true, ins: 23, ret: 18 } },
+  { id: "c2", hue: 28, follows: false, seeds: [{ pid: "p3", feats: true }], manual: ["a13", "a18"],
+    target: { kind: "existing", pid: "p4", nombre: "Todo lo que escuche en 2025" }, items: 0, retencion: "acum", guardado: false,
+    pend: [["Nicki Nicole", "Dispara", "Dispara"], ["Paco Amoroso", "Tu Madre", "Tu Madre (feat. Ca7riel)"]],
+    entrega: { cuando: "vie 25 sep", ok: false, ins: 7, ret: 0, error: "Spotify respondio 502 en el Track 8 de 15. Se reintenta manana." } },
+];
+RUN.artistas = S.canales.reduce((n, c) => n + whitelist(c), 0); RUN.nuevos = totalPend();
 
 const h = (location.hash || "").slice(1).toUpperCase();
-if (VARIANTS[h]) S.ui.v = h;
-else { const q = new URLSearchParams(location.search).get("variant"); if (q && VARIANTS[q.toUpperCase()]) S.ui.v = q.toUpperCase(); }
+if (VARIANTS[h]) { S.ui.v = h; S.user = PERFIL; }
 render();
 </script>
