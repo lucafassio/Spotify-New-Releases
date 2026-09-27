@@ -5,7 +5,7 @@
   PROTOTIPO descartable (#7), ronda 2. Tres variantes del Panel (B1 Biblioteca, B2 Tablero,
   B3 Ajustes) sobre la paleta negro + verde. Login unico. Boton "Nombres" muestra el nombre de
   cada elemento segun docs/design/style-guide.md (#10). Estado en memoria, sin backend.
-  Datos de ejemplo.
+  Datos: biblioteca real de Luca (con su OK), Lote y Entregas inventados.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -276,18 +276,27 @@ button.tile:hover .edit { color: var(--verde); }
 <div class="proto"><div class="proto-in" id="proto"></div></div>
 
 <script>
-// ---------- datos de ejemplo (no son de ninguna cuenta real) ----------
-const PERFIL = { nombre: "Luca", handle: "luca", follows: 87 };
+// ---------- datos: biblioteca de Luca (Spotify Web, 2026-09-27), recortada ----------
+// artistas/feats contados sobre los primeros 100 Tracks; items aproximados salvo los < 100.
+const PERFIL = { nombre: "Luca", handle: "lucafassio", follows: 0 };
 // tipo: propia | colaborativa | ajena (ajena = de otro, Spotify no deja leerla)
 const PLAYLISTS = [
-  { id: "p1", nombre: "Rock argentino que no falla", tipo: "propia", artistas: 34, feats: 11, items: 412 },
-  { id: "p2", nombre: "Viaje a la costa", tipo: "propia", artistas: 58, feats: 23, items: 690 },
-  { id: "p3", nombre: "Previa con los pibes", tipo: "colaborativa", artistas: 41, feats: 19, items: 233 },
-  { id: "p4", nombre: "Todo lo que escuche en 2025", tipo: "propia", artistas: 212, feats: 64, items: 9180 },
-  { id: "p5", nombre: "Indie en espanol", tipo: "ajena", artistas: 70, feats: 12, items: 150, duenio: "un amigo" },
-  { id: "p6", nombre: "Novedades Viernes", tipo: "ajena", artistas: 90, feats: 40, items: 100, duenio: "Spotify" },
+  { id: "p1", nombre: "FLOW DE EXPORTACION BB", tipo: "propia", artistas: 20, feats: 32, items: 160 },
+  { id: "p2", nombre: "\u{1F343}", tipo: "propia", artistas: 41, feats: 22, items: 229 },
+  { id: "p3", nombre: "Basta", tipo: "propia", artistas: 33, feats: 31, items: 180 },
+  { id: "p4", nombre: "la vibra", tipo: "ajena", artistas: 27, feats: 23, items: 44, duenio: "Alvaro.gm" },
+  { id: "p5", nombre: "New G", tipo: "propia", artistas: 44, feats: 33, items: 150 },
+  { id: "p6", nombre: "Trap chill", tipo: "propia", artistas: 48, feats: 37, items: 200 },
+  { id: "p7", nombre: "Trap", tipo: "propia", artistas: 46, feats: 42, items: 300 },
+  { id: "p8", nombre: "Chill?", tipo: "propia", artistas: 57, feats: 30, items: 150 },
+  { id: "p9", nombre: "Que Peli Tenia", tipo: "propia", artistas: 24, feats: 25, items: 88 },
+  { id: "p10", nombre: "El Gusto Culposo", tipo: "propia", artistas: 40, feats: 9, items: 120 },
+  { id: "p11", nombre: "Oldie but Goldie", tipo: "propia", artistas: 33, feats: 21, items: 150 },
+  { id: "p12", nombre: "La Playlist En Cuestion", tipo: "propia", artistas: 35, feats: 20, items: 140 },
+  { id: "p13", nombre: "ni idea", tipo: "propia", artistas: 27, feats: 19, items: 130 },
 ];
-const ARTISTS = ["Babasonicos", "Bandalos Chinos", "Conociendo Rusia", "Dillom", "El Mato a un Policia Motorizado", "Emilia", "Fito Paez", "Francisca y los Exploradores", "Juana Molina", "Lali", "Los Espiritus", "Marilina Bertoldi", "Nathy Peluso", "Nicki Nicole", "Paco Amoroso", "Ca7riel", "Peces Raros", "Silvestre y la Naranja", "Tan Bionica", "Wos", "Zoe Gotusso"].map((n, i) => ({ id: "a" + i, nombre: n }));
+const ARTISTS = ["Bad Bunny", "Myke Towers", "Mora", "Romeo Santos", "Duki", "Eladio Carrion", "Anuel AA", "Omar Courtz", "Rauw Alejandro", "Daddy Yankee", "YSY A", "Ozuna", "ROA", "Justin Quiles", "Quevedo", "C.R.O", "J Balvin", "Prince Royce", "Aventura", "Wisin & Yandel", "Pablo Alboran", "Alejandro Sanz", "Plan B", "Arcangel", "Bizarrap", "Dei V", "Tainy", "Fazzini", "Beny Jr", "Elpatron970", "3AM", "Alejo", "Alex Rose", "Nicky Jam", "Maluma", "Hira", "YOVNGCHIMI", "Bryant Myers", "JC Reyes", "JHAYCO", "Jay Wheeler", "Sech", "De La Rose", "Santy-P", "Abel Pintos", "Don Omar", "Luar La L", "Panther", "Neo Pistea", "Lucho SSJ", "Morat", "Jesse & Joy", "Dalex", "Ryan Castro", "Bad Gyal"].map((n, i) => ({ id: "a" + i, nombre: n }));
+const idx = n => ARTISTS.find(a => a.nombre === n).id;
 const REDIRECT = "https://spotify-new-releases.onrender.com/callback";
 const RUN = { cuando: "hoy, 02:41", ok: true, artistas: 0, nuevos: 0 };
 
@@ -674,15 +683,15 @@ document.addEventListener("keydown", e => {
 });
 function selectRedir() { const r = document.createRange(); r.selectNodeContents(document.getElementById("redir")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
 
-// Canales de ejemplo. Lote y Entregas inventados.
+// Canales armados con tus playlists. Lote y Entregas inventados (titulos de ejemplo).
 S.canales = [
-  { id: "c1", hue: 322, follows: true, seeds: [{ pid: "p1", feats: false }], manual: ["a11", "a16"],
-    target: { kind: "bot", nombre: "Radar rock" }, items: 640, retencion: 4, guardado: true,
-    pend: [["Marilina Bertoldi", "Mi Fiesta", "Para Quien Trabajas II"], ["Peces Raros", "Lo Que Queda", "Lo Que Queda"], ["Babasonicos", "Tormento", "Tormento"], ["Los Espiritus", "Rio Arriba", "Rio Arriba"]],
+  { id: "c1", hue: 322, follows: false, seeds: [{ pid: "p7", feats: true }, { pid: "p6", feats: false }], manual: [idx("Duki"), idx("YSY A")],
+    target: { kind: "bot", nombre: "Radar Trap" }, items: 212, retencion: 4, guardado: true,
+    pend: [["Myke Towers", "Tema nuevo (ejemplo)", "Single de ejemplo"], ["Mora", "Estreno (ejemplo)", "Album de ejemplo"], ["Mora", "Track 2 (ejemplo)", "Album de ejemplo"], ["Omar Courtz", "Colaboracion (ejemplo)", "Single de ejemplo"], ["Duki", "Adelanto (ejemplo)", "Single de ejemplo"], ["Eladio Carrion", "Remix (ejemplo)", "Single de ejemplo"]],
     entrega: { cuando: "vie 25 sep", ok: true, ins: 23, ret: 18 } },
-  { id: "c2", hue: 28, follows: false, seeds: [{ pid: "p3", feats: true }], manual: ["a13", "a18"],
-    target: { kind: "existing", pid: "p4", nombre: "Todo lo que escuche en 2025" }, items: 0, retencion: "acum", guardado: false,
-    pend: [["Nicki Nicole", "Dispara", "Dispara"], ["Paco Amoroso", "Tu Madre", "Tu Madre (feat. Ca7riel)"]],
+  { id: "c2", hue: 28, follows: false, seeds: [{ pid: "p12", feats: false }, { pid: "p13", feats: false }], manual: [idx("Romeo Santos")],
+    target: { kind: "existing", pid: "p11", nombre: "Oldie but Goldie" }, items: 0, retencion: "acum", guardado: false,
+    pend: [["Prince Royce", "Bachata (ejemplo)", "Single de ejemplo"], ["Daddy Yankee", "Reedicion (ejemplo)", "Album de ejemplo"]],
     entrega: { cuando: "vie 25 sep", ok: false, ins: 7, ret: 0, error: "Spotify respondio 502 en el Track 8 de 15. Se reintenta manana." } },
 ];
 RUN.artistas = S.canales.reduce((n, c) => n + whitelist(c), 0); RUN.nuevos = totalPend();
