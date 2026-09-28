@@ -11,6 +11,13 @@ cambio alcanza con "en la Tarjeta de Seed Playlist, ...". Si un nombre choca con
 
 Estado: base definida (#10). Variante del Panel pendiente de eleccion en #7 (B1, B2 o B3).
 
+## Principio
+
+El Panel es para configurar, no para mirar. Se muestra solo lo que el User elige o necesita
+saber para elegir. No van: canciones agregadas o por agregar, historial de Entregas, horarios,
+Runs, ni explicaciones de como trabaja el bot por dentro. Un dato interno aparece solo si le
+pide una accion al User (ej: Medidor de tope al 90%).
+
 ## Color
 
 Tema unico oscuro, a proposito: la app vive al lado de Spotify y comparte su base negro + verde.
@@ -28,12 +35,12 @@ verde decorativo.
 | `--texto` | `#F5F5F2` | Texto principal |
 | `--texto-2` | `#A7A9A4` | Texto secundario |
 | `--texto-3` | `#6E716B` | Numeracion, pistas, placeholders |
-| `--verde` | `#1ED760` | Boton primario, Interruptor encendido, seleccion, Proxima Entrega |
+| `--verde` | `#1ED760` | Boton primario, Interruptor encendido, seleccion, bloque destacado de cada variante |
 | `--verde-hondo` | `#13A049` | Rayado de Retencion Acumulativa |
 | `--verde-tinta` | `#04210F` | Texto secundario sobre verde |
 | `--lima` | `#C6F432` | Solo herramientas del prototipo (capa de Nombres) |
 | `--ambar` | `#F5B642` | Aviso: tope al 90%, Premium |
-| `--rojo` | `#FF6B6B` | Error, Entrega fallida, Desvincular |
+| `--rojo` | `#FF6B6B` | Error, tope al 95%, Desvincular |
 
 Semanticos (`--ambar`, `--rojo`, y `--verde` en Etiqueta ok) van siempre con su version
 `-suave` (14% de opacidad) de fondo.
@@ -48,7 +55,7 @@ tine su Cabecera en B1.
 | --- | --- | --- |
 | Display | Archivo (ancho variable 62-125, peso 400-900) | Titulos, Frase de login, numeros grandes. Angosta (`font-stretch` 68-85%) y pesada (800-900) |
 | Texto | Figtree 400-700 | Todo lo demas |
-| Mono | DM Mono 400-500 | Client ID, redirect URI, Cuenta regresiva |
+| Mono | DM Mono 400-500 | Client ID, redirect URI |
 
 Escala: 11 (eyebrow, mayusculas +0.12em) / 13 (small) / 15 (texto) / 22-28 (h2) / 40-88 (h1 y
 frases, con `clamp`).
@@ -76,7 +83,7 @@ frases, con `clamp`).
 | Aviso | Caja de texto con fondo: neutra, ok, warn, crit |
 | Chip | Pildora con avatar y x para quitar |
 | Portada | Cuadrado con degradado e inicial |
-| Medidor de tope | Barra de Tracks sobre 10.000 de la Target Playlist |
+| Medidor de tope | Barra de canciones sobre 10.000; solo aparece desde el 90% |
 
 ### Login
 
@@ -100,16 +107,10 @@ frases, con `clamp`).
 | Barra lateral | Columna izquierda (arriba en celular) |
 | Perfil | Avatar, nombre y Salir |
 | Lista de Canales | Tarjeta con los Canales y el + |
-| Fila de Canal | Portada chica, nombre y cuantos esperan |
+| Fila de Canal | Portada chica, nombre y cantidad de artistas |
 | Boton Nuevo Canal | El + de la Lista de Canales |
-| Aviso de horario | Cuando revisa el bot y cuando entrega, en la zona del navegador |
-| Ultima revision | Linea con el ultimo Run |
 | Panel | Area derecha con el Canal elegido |
-| Cabecera de Canal | Portada + nombre del Canal + datos |
-| Proxima Entrega | Cuando sale lo que espera y cuanto falta |
-| Lote | Lista de lo que entra el viernes |
-| Fila de Track | Numero, portada, titulo, artista, Release |
-| Ultima Entrega | Resultado de la Entrega anterior |
+| Cabecera de Canal | Portada + nombre del Canal + resumen (artistas, que guarda) |
 | Confirmacion de desvincular | Caja roja con las dos formas de borrar |
 
 ### Editores
@@ -137,12 +138,13 @@ frases, con `clamp`).
 
 | Variante | Nombre | Que es |
 | --- | --- | --- |
-| B1 Biblioteca | Pestanas | Esta semana / Artistas / Playlist y Retencion |
-| B2 Tablero | Cuenta regresiva | Dias, horas y minutos en la Proxima Entrega |
-| B2 Tablero | Tarjeta de Lote, de Artistas, de Playlist, de Retencion, de Ultima Entrega | Bloques del tablero; las de Artistas, Playlist y Retencion abren el Cajon |
+| B1 Biblioteca | Pestanas | Artistas / Playlist / Que guarda |
+| B2 Tablero | Tarjeta de Artistas | Bloque verde grande con total, Seed Playlists y artistas a mano |
+| B2 Tablero | Tarjeta de Playlist, de Retencion | Bloques oscuros; abren el Cajon |
+| B2 Tablero | Tarjeta de Guardados | Bloque ancho con el Interruptor Guardado, se edita ahi mismo |
 | B2 Tablero | Semanas | 12 barritas que muestran la Retencion |
 | B2 Tablero | Cajon de edicion | Panel que entra desde la derecha con un Editor |
-| B3 Ajustes | Franja de Entrega | Banda verde arriba del Panel |
+| B3 Ajustes | Franja de Canal | Banda verde con portada, nombre y resumen del Canal |
 | B3 Ajustes | Lista de ajustes | Filas que se despliegan |
 | B3 Ajustes | Fila de ajuste | Nombre, valor actual y flecha |
 
