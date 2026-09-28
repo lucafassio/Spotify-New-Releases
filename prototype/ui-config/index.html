@@ -5,7 +5,8 @@
   PROTOTIPO descartable (#7), ronda 2. Tres variantes del Panel (B1 Biblioteca, B2 Tablero,
   B3 Ajustes) sobre la paleta negro + verde. Login unico. Boton "Nombres" muestra el nombre de
   cada elemento segun docs/design/style-guide.md (#10). Estado en memoria, sin backend.
-  Datos: biblioteca real de Luca (con su OK), Lote y Entregas inventados.
+  Ronda 3: solo configuracion, sin canciones ni datos internos del bot.
+  Datos: biblioteca real de Luca (con su OK).
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -94,13 +95,6 @@ label { cursor: pointer; }
 .cover span { font-family: var(--display); font-weight: 900; font-stretch: 70%; color: rgba(0,0,0,.55); line-height: .8; padding: 6%; letter-spacing: -0.02em; }
 .avatar { flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 11px; color: rgba(0,0,0,.7); background: hsl(var(--h) 55% 62%); }
 
-/* ---------- shared: filas de Track ---------- */
-.lote { display: flex; flex-direction: column; }
-.track { display: grid; grid-template-columns: 22px 40px 1fr auto; gap: 12px; align-items: center; padding: 6px 8px; border-radius: var(--r-s); }
-.track:hover { background: var(--elevada); }
-.track .n { color: var(--texto-3); text-align: right; font-size: 14px; }
-.track b { font-weight: 600; display: block; }
-.track small { display: block; }
 .meter { height: 6px; border-radius: 99px; background: var(--elevada-2); overflow: hidden; }
 .meter i { display: block; height: 100%; background: var(--verde); border-radius: 99px; }
 .meter.warn i { background: var(--ambar); }
@@ -144,8 +138,6 @@ label { cursor: pointer; }
 .canal-row.on { background: var(--elevada-2); }
 .canal-row .nm { font-weight: 600; }
 .canal-row.on .nm { color: var(--verde); }
-.horario { padding: 14px 16px; font-size: 13px; color: var(--texto-2); display: flex; flex-direction: column; gap: 6px; }
-.horario b { color: var(--texto); }
 .mainp { min-width: 0; overflow: hidden; }
 @media (max-width: 860px) {
   .shell { grid-template-columns: 1fr; }
@@ -163,31 +155,17 @@ label { cursor: pointer; }
 .b1-title { font-size: clamp(36px, 7vw, 84px); font-weight: 900; font-stretch: 80%; letter-spacing: -0.03em; line-height: .95; }
 .b1-body { background: linear-gradient(180deg, hsl(var(--h) 30% 10%) 0, var(--superficie) 240px); padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 22px; }
 .b1-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.play { width: 56px; height: 56px; border-radius: 50%; background: var(--verde); display: grid; place-items: center; color: var(--negro); flex: none; }
-.cuenta { font-family: var(--display); font-stretch: 75%; font-weight: 800; font-size: 22px; line-height: 1.05; }
-.tabs { display: flex; gap: 8px; }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .tabs button { border: 0; background: var(--elevada); color: var(--texto); border-radius: 99px; padding: 7px 16px; font-weight: 600; font-size: 14px; }
 .tabs button.on { background: var(--texto); color: var(--negro); }
-.b1-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px 32px; }
-.b1-block { display: flex; flex-direction: column; gap: 10px; }
-.b1-block h2 { font-size: 22px; font-weight: 800; }
-.tl-head { display: grid; grid-template-columns: 22px 40px 1fr auto; gap: 12px; padding: 0 8px 8px; border-bottom: 1px solid var(--linea); color: var(--texto-3); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
 @media (max-width: 720px) {
   .b1-head { flex-direction: column; align-items: flex-start; padding-top: 28px; }
   .b1-head .cover { width: 120px !important; height: 120px !important; }
   .b1-head .cover span { font-size: 74px !important; }
-  .b1-grid { grid-template-columns: 1fr; }
 }
 
 /* ---------- B2 Tablero ---------- */
 .b2 { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
-.b2-hero { background: var(--verde); color: var(--negro); border-radius: var(--r-l); padding: 22px 24px; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: end; }
-.b2-hero .eyebrow { color: var(--verde-tinta); }
-.b2-hero .big { font-family: var(--display); font-weight: 900; font-stretch: 72%; font-size: clamp(40px, 7vw, 76px); line-height: .9; letter-spacing: -0.02em; }
-.b2-hero .clock { display: flex; gap: 14px; }
-.b2-hero .clock div { display: flex; flex-direction: column; align-items: center; }
-.b2-hero .clock b { font-family: var(--mono); font-size: 34px; font-weight: 500; line-height: 1; }
-.b2-hero .clock small { color: var(--verde-tinta); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
 .b2-canal { display: flex; gap: 16px; align-items: center; }
 .b2-canal .cover { width: 72px; height: 72px; }
 .b2-canal .cover span { font-size: 44px; }
@@ -199,7 +177,12 @@ button.tile:hover { background: var(--elevada-2); }
 .tile .lbl { display: flex; justify-content: space-between; align-items: center; }
 .tile .edit { font-size: 12px; font-weight: 700; color: var(--texto-3); }
 button.tile:hover .edit { color: var(--verde); }
-.tile.lote-t { grid-column: span 2; grid-row: span 2; }
+.tile.hero { grid-row: span 2; background: var(--verde); color: var(--negro); }
+button.tile.hero:hover { background: #3BE477; }
+.tile.hero .eyebrow, .tile.hero .edit, .tile.hero small, button.tile.hero:hover .edit { color: var(--verde-tinta); }
+.tile.hero .k { font-size: 72px; }
+.tile.hero .stackav .avatar { box-shadow: 0 0 0 2px var(--verde); }
+.tile.ancho { grid-column: span 2; }
 .stackav { display: flex; }
 .stackav .avatar { width: 30px; height: 30px; margin-left: -8px; box-shadow: 0 0 0 2px var(--elevada); }
 .stackav .avatar:first-child { margin-left: 0; }
@@ -210,19 +193,16 @@ button.tile:hover .edit { color: var(--verde); }
 .drawer-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 20; }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100%); background: var(--superficie); z-index: 21; padding: calc(env(safe-area-inset-top, 0px) + 20px) 22px calc(env(safe-area-inset-bottom, 0px) + 24px); overflow-y: auto; display: flex; flex-direction: column; gap: 18px; box-shadow: -20px 0 60px rgba(0,0,0,.6); }
 .drawer h2 { font-size: 28px; font-weight: 900; font-stretch: 80%; }
-@media (max-width: 900px) { .bento { grid-template-columns: 1fr 1fr; } .tile.lote-t { grid-column: span 2; grid-row: auto; } }
-@media (max-width: 560px) { .bento { grid-template-columns: 1fr; } .tile.lote-t { grid-column: auto; } .b2-hero { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .bento { grid-template-columns: 1fr 1fr; } .tile.hero { grid-column: span 2; grid-row: auto; } }
+@media (max-width: 560px) { .bento { grid-template-columns: 1fr; } .tile.hero, .tile.ancho { grid-column: auto; } }
 
 /* ---------- B3 Ajustes ---------- */
 .b3 { display: flex; flex-direction: column; }
-.b3-franja { background: var(--verde); color: var(--negro); padding: 18px 24px; display: flex; gap: 12px 28px; align-items: baseline; flex-wrap: wrap; border-radius: var(--r-m) var(--r-m) 0 0; }
-.b3-franja .big { font-family: var(--display); font-weight: 900; font-stretch: 68%; font-size: clamp(30px, 5vw, 48px); line-height: .95; text-transform: uppercase; letter-spacing: -0.01em; }
-.b3-franja span { font-weight: 700; }
-.b3-in { padding: 28px 24px 32px; display: flex; flex-direction: column; gap: 28px; max-width: 820px; }
-.b3-head { display: flex; gap: 18px; align-items: center; }
-.b3-head .cover { width: 96px; height: 96px; }
-.b3-head .cover span { font-size: 60px; }
-.b3-head h1 { font-size: clamp(32px, 5vw, 54px); font-weight: 900; font-stretch: 85%; letter-spacing: -0.02em; }
+.b3-franja { background: var(--verde); color: var(--negro); padding: 18px 24px; display: flex; gap: 18px; align-items: center; border-radius: var(--r-m) var(--r-m) 0 0; }
+.b3-franja .big { font-family: var(--display); font-weight: 900; font-stretch: 68%; font-size: clamp(30px, 5vw, 52px); line-height: .95; text-transform: uppercase; letter-spacing: -0.01em; }
+.b3-franja .nums { font-weight: 700; color: var(--verde-tinta); }
+.b3-franja .cover { box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+.b3-in { padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 28px; max-width: 820px; }
 .ajustes { display: flex; flex-direction: column; border-top: 1px solid var(--linea); }
 .ajuste { border-bottom: 1px solid var(--linea); }
 .ajuste > button { width: 100%; border: 0; background: none; display: grid; grid-template-columns: 150px 1fr auto; gap: 16px; align-items: center; padding: 16px 4px; text-align: left; }
@@ -298,7 +278,6 @@ const PLAYLISTS = [
 const ARTISTS = ["Bad Bunny", "Myke Towers", "Mora", "Romeo Santos", "Duki", "Eladio Carrion", "Anuel AA", "Omar Courtz", "Rauw Alejandro", "Daddy Yankee", "YSY A", "Ozuna", "ROA", "Justin Quiles", "Quevedo", "C.R.O", "J Balvin", "Prince Royce", "Aventura", "Wisin & Yandel", "Pablo Alboran", "Alejandro Sanz", "Plan B", "Arcangel", "Bizarrap", "Dei V", "Tainy", "Fazzini", "Beny Jr", "Elpatron970", "3AM", "Alejo", "Alex Rose", "Nicky Jam", "Maluma", "Hira", "YOVNGCHIMI", "Bryant Myers", "JC Reyes", "JHAYCO", "Jay Wheeler", "Sech", "De La Rose", "Santy-P", "Abel Pintos", "Don Omar", "Luar La L", "Panther", "Neo Pistea", "Lucho SSJ", "Morat", "Jesse & Joy", "Dalex", "Ryan Castro", "Bad Gyal"].map((n, i) => ({ id: "a" + i, nombre: n }));
 const idx = n => ARTISTS.find(a => a.nombre === n).id;
 const REDIRECT = "https://spotify-new-releases.onrender.com/callback";
-const RUN = { cuando: "hoy, 02:41", ok: true, artistas: 0, nuevos: 0 };
 
 // ---------- helpers ----------
 const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
@@ -316,7 +295,7 @@ const S = {
   user: null, sim: "registrado", screen: "login",
   own: { cid: "", secret: "" },
   canales: [],
-  ui: { v: "B1", names: false, debug: false, sel: "c1", tab: "semana", drawer: null, open: "artistas", confirm: null, flash: null },
+  ui: { v: "B1", names: false, debug: false, sel: "c1", tab: "artistas", drawer: null, open: "artistas", confirm: null, flash: null },
 };
 const VARIANTS = { B1: "Biblioteca", B2: "Tablero", B3: "Ajustes" };
 const C = id => S.canales.find(c => c.id === id);
@@ -336,56 +315,26 @@ function srcText(c) {
   const p = [c.follows && `${PERFIL.follows} que seguis`, c.seeds.length && `${c.seeds.length} playlist${c.seeds.length > 1 ? "s" : ""}`, c.manual.length && `${c.manual.length} a mano`].filter(Boolean);
   return p.length ? p.join(" + ") : "ninguno todavia";
 }
-// Entrega: viernes 02:37 ART = 05:37 UTC
-function nextFriday() {
-  const now = new Date(); const d = new Date(now);
-  d.setUTCDate(d.getUTCDate() + ((5 - d.getUTCDay() + 7) % 7)); d.setUTCHours(5, 37, 0, 0);
-  if (d <= now) d.setUTCDate(d.getUTCDate() + 7);
-  return d;
-}
-const FRI = nextFriday();
-const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
-const friDay = FRI.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
-const friTime = FRI.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-function left() { const ms = FRI - new Date(); const h = Math.max(0, Math.floor(ms / 36e5)); return { d: Math.floor(h / 24), h: h % 24, m: Math.max(0, Math.floor(ms / 6e4) % 60) }; }
-const totalPend = () => S.canales.reduce((n, c) => n + c.pend.length, 0);
 const cap = c => c.target.kind === "existing" ? (P(c.target.pid)?.items ?? 0) : c.items;
-
+// Solo aparece cuando la playlist se esta llenando: es lo unico del tope que le importa al User.
 function capMeter(c) {
   const n = cap(c), pct = Math.min(100, n / 100);
-  const cls = pct >= 95 ? "crit" : pct >= 90 ? "warn" : "";
-  const msg = pct >= 95 ? `Casi llena: ${n.toLocaleString("es-AR")} de 10.000. Lo que no entre se descarta.`
-    : pct >= 90 ? `${n.toLocaleString("es-AR")} de 10.000 Tracks. Se esta llenando.` : `${n.toLocaleString("es-AR")} de 10.000 Tracks`;
-  return `<div class="stack" style="gap:6px" data-n="Medidor de tope"><div class="meter ${cls}"><i style="width:${Math.max(pct, 1)}%"></i></div><small class="nums">${msg}</small></div>`;
+  if (pct < 90) return "";
+  const cls = pct >= 95 ? "crit" : "warn";
+  return `<div class="stack" style="gap:6px" data-n="Medidor de tope"><div class="meter ${cls}"><i style="width:${pct}%"></i></div>
+    <small class="nums">${n.toLocaleString("es-AR")} de 10.000 canciones. Spotify no deja pasar de 10.000; lo que no entre no se agrega.</small></div>`;
 }
-const pendPill = c => c.pend.length ? `<span class="pill ok nums" data-n="Etiqueta"><i></i>${c.pend.length} esperando</span>` : `<span class="pill" data-n="Etiqueta">nada nuevo aun</span>`;
-const entregaPill = c => !c.entrega ? `<span class="pill" data-n="Etiqueta">sin Entregas</span>` : c.entrega.ok ? `<span class="pill ok" data-n="Etiqueta">ultima Entrega ok</span>` : `<span class="pill crit" data-n="Etiqueta"><i></i>ultima Entrega fallo</span>`;
 const flash = () => S.ui.flash ? `<div class="aviso ok" data-n="Aviso">${esc(S.ui.flash)}</div>` : "";
-
-// ---------- piezas compartidas ----------
-function trackRows(c, head = false) {
-  if (!c.pend.length) return `<p class="muted">Nada nuevo esta semana todavia. El bot revisa todos los dias.</p>`;
-  return `<div class="lote" data-n="Lote">
-    ${head ? `<div class="tl-head"><span>#</span><span></span><span>Titulo</span><span>Release</span></div>` : ""}
-    ${c.pend.map((t, i) => `<div class="track" data-n="Fila de Track"><span class="n nums">${i + 1}</span>${cover(t[2], 40, hue(t[2]))}
-      <span class="ellip"><b class="ellip">${esc(t[1])}</b><small class="ellip">${esc(t[0])}</small></span><small class="ellip" style="max-width:180px">${esc(t[2])}</small></div>`).join("")}</div>`;
-}
-function ultimaEntrega(c) {
-  const e = c.entrega;
-  if (!e) return `<p class="muted" data-n="Ultima Entrega">Este Canal todavia no tuvo ninguna Entrega.</p>`;
-  return `<div class="stack" style="gap:8px" data-n="Ultima Entrega"><div class="row wrap">${entregaPill(c)}<small class="nums">${e.cuando} &middot; +${e.ins} agregados &middot; &minus;${e.ret} retirados</small></div>
-    ${e.error ? `<div class="aviso crit">${esc(e.error)}</div>` : ""}</div>`;
-}
+const resumen = c => `~${whitelist(c)} artistas &middot; guarda ${retText(c)}`;
 function edArtistas(c) {
   const seedCards = PLAYLISTS.map(p => {
     const ok = p.tipo !== "ajena";
     const on = c.seeds.some(s => s.pid === p.id);
-    const other = S.canales.find(k => k.target.pid === p.id);
     return `<button class="seed ${on ? "on" : ""} ${ok ? "" : "off"}" data-act="seed" data-c="${c.id}" data-p="${p.id}" ${ok ? "" : "disabled"} aria-pressed="${on}" data-n="Tarjeta de Seed Playlist"
       title="${ok ? "" : "Spotify solo deja leer playlists tuyas o colaborativas"}">
       ${cover(p.nombre, 120, hue(p.id))}${on ? `<span class="tick">&#10003;</span>` : ""}
       <span class="nm ellip">${esc(p.nombre)}</span>
-      <small class="nums">${ok ? `${p.artistas} artistas` : `de ${esc(p.duenio)}, no se puede leer`}${other ? " &middot; es Target" : ""}</small></button>`;
+      <small class="nums">${ok ? `${p.artistas} artistas` : `de ${esc(p.duenio)}, no se puede usar`}</small></button>`;
   }).join("");
   const featRows = c.seeds.map(s => { const p = P(s.pid); return p ? `<div class="row" data-n="Interruptor Feats">${sw(s.feats, "feats", c.id, `data-p="${p.id}"`)}<span class="grow">Sumar tambien los feats de <b>${esc(p.nombre)}</b></span><small class="nums">+${p.feats}</small></div>` : ""; }).join("");
   return `<div class="stack" style="gap:20px" data-n="Editor de Artistas">
@@ -398,7 +347,7 @@ function edArtistas(c) {
       <div class="row wrap" style="gap:6px">${c.manual.map(id => `<span class="chip" data-n="Ficha de artista">${avatar(A(id).nombre, 26)}${esc(A(id).nombre)}<button data-act="man-rm" data-c="${c.id}" data-a="${id}" aria-label="Quitar ${esc(A(id).nombre)}">&times;</button></span>`).join("") || `<small>Ninguno todavia.</small>`}</div>
       <input type="search" id="search-${c.id}" data-search="${c.id}" placeholder="Buscar un artista para sumar" autocomplete="off" data-n="Buscador de artistas">
       <div id="res-${c.id}"></div></div>
-    <div class="aviso nums" data-n="Total de Whitelist">Este Canal vigila <b>~${whitelist(c)} artistas</b>. De cada tema cuenta el artista principal${c.seeds.some(s => s.feats) ? ", y los feats donde lo pediste" : ""}.</div>
+    <div class="aviso nums" data-n="Total de Whitelist">En total, <b>~${whitelist(c)} artistas</b>.</div>
   </div>`;
 }
 function searchResults(cid, q) {
@@ -414,28 +363,28 @@ function edPlaylist(c) {
   const list = own.map(p => {
     const other = S.canales.find(k => k.id !== c.id && k.target.pid === p.id);
     return `<button class="opt ${c.target.pid === p.id ? "on" : ""}" data-act="t-pick" data-c="${c.id}" data-p="${p.id}" ${other ? "disabled" : ""}>${cover(p.nombre, 36, hue(p.id))}
-      <span class="grow"><b class="ellip" style="display:block">${esc(p.nombre)}</b><small class="nums">${p.items.toLocaleString("es-AR")} Tracks${other ? ` &middot; ya es de "${esc(nombre(other))}"` : ""}</small></span></button>`;
+      <span class="grow"><b class="ellip" style="display:block">${esc(p.nombre)}</b><small class="nums">${p.items.toLocaleString("es-AR")} canciones${other ? ` &middot; ya la usa "${esc(nombre(other))}"` : ""}</small></span></button>`;
   }).join("");
   return `<div class="stack" style="gap:16px" data-n="Editor de Playlist">
     <div class="seg" data-n="Selector de Target"><button class="${bot ? "on" : ""}" data-act="t-kind" data-c="${c.id}" data-k="bot">Una nueva del bot</button><button class="${bot ? "" : "on"}" data-act="t-kind" data-c="${c.id}" data-k="existing">Una que ya tengo</button></div>
-    ${bot ? `<div class="stack" style="gap:6px"><label for="tname-${c.id}"><b>Nombre</b></label><input type="text" id="tname-${c.id}" data-name="${c.id}" value="${esc(c.target.nombre)}" data-n="Nombre de playlist"><small>Lo nuevo aparece arriba de todo. Si la renombras en Spotify no se pierde.</small></div>`
-      : `<div class="stack" style="gap:4px" data-n="Selector de playlist existente"><small>Lo nuevo se suma al final y el bot nunca borra nada.</small>${list}</div>`}
+    ${bot ? `<div class="stack" style="gap:6px"><label for="tname-${c.id}"><b>Nombre</b></label><input type="text" id="tname-${c.id}" data-name="${c.id}" value="${esc(c.target.nombre)}" data-n="Nombre de playlist"><small>Podes renombrarla despues en Spotify.</small></div>`
+      : `<div class="stack" style="gap:4px" data-n="Selector de playlist existente"><small>Solo se agregan canciones, nunca se borra nada tuyo.</small>${list}</div>`}
     ${capMeter(c)}
   </div>`;
 }
 function edRetencion(c) {
-  if (c.target.kind === "existing") return `<div class="aviso" data-n="Editor de Retencion">En una playlist que ya tenias el bot solo suma, nunca retira. Para que se renueve sola, deja que el bot cree una.</div>`;
+  if (c.target.kind === "existing") return `<div class="aviso" data-n="Editor de Retencion">Como es una playlist tuya, guarda todo. Para que se renueve sola, usa una nueva del bot.</div>`;
   const opts = [1, 2, 4, 8, 12].map(n => `<button class="${c.retencion === n ? "on" : ""}" data-act="ret" data-c="${c.id}" data-r="${n}">${n === 1 ? "1 semana" : `${n} semanas`}</button>`).join("");
   return `<div class="stack" style="gap:10px" data-n="Editor de Retencion">
     <div class="seg" data-n="Selector de Retencion">${opts}<button class="${c.retencion === "acum" ? "on" : ""}" data-act="ret" data-c="${c.id}" data-r="acum">Todo</button></div>
-    <small>${c.retencion === 1 ? "Cada viernes la playlist se renueva entera." : c.retencion === "acum" ? "Nunca se retira nada. Cerca de 9.500 Tracks salen las semanas mas viejas." : `Cada viernes entra la semana nueva y sale la de hace ${c.retencion}. Solo se retira lo que puso el bot.`}</small></div>`;
+    <small>${c.retencion === 1 ? "Cada semana la playlist se renueva entera." : c.retencion === "acum" ? "No se borra nada." : `Entra lo nuevo y sale lo de hace ${c.retencion} semanas.`}</small></div>`;
 }
 function edGuardado(c) {
-  return `<div class="fuente" data-n="Interruptor Guardado">${sw(c.guardado, "guardado", c.id)}<div class="grow"><b>Saltear lo que ya tengo guardado</b><br><small>Si ya tenes todos los temas de un lanzamiento en tus likes o tus playlists, no se agrega.</small></div></div>`;
+  return `<div class="fuente" data-n="Interruptor Guardado">${sw(c.guardado, "guardado", c.id)}<div class="grow"><b>Saltear lo que ya tengo guardado</b><br><small>Si ya lo tenes en tus likes o tus playlists, no se agrega.</small></div></div>`;
 }
 function confirmBox(c) {
   if (S.ui.confirm !== c.id) return "";
-  return `<div class="confirm" data-n="Confirmacion de desvincular"><b>Desvincular "${esc(nombre(c))}"</b><p class="muted">Se borra el Canal con su lista de artistas y lo que esperaba al viernes. La playlist queda en tu Spotify salvo que elijas borrarla.</p>
+  return `<div class="confirm" data-n="Confirmacion de desvincular"><b>Desvincular "${esc(nombre(c))}"</b><p class="muted">Se borra el Canal y su lista de artistas. La playlist queda en tu Spotify, salvo que elijas borrarla.</p>
     <div class="row wrap"><button class="btn" data-act="unlink" data-c="${c.id}" data-del="0">Borrar Canal, dejar playlist</button>
     <button class="btn peligro" data-act="unlink" data-c="${c.id}" data-del="1">Borrar Canal y playlist</button>
     <button class="btn fantasma" data-act="cancel">Cancelar</button></div></div>`;
@@ -451,10 +400,8 @@ function side(sel) {
       <div class="biblio-head"><span class="eyebrow">Tus Canales &middot; ${S.canales.length}/5</span>
         <button class="btn fantasma" data-act="new" ${S.canales.length >= 5 ? "disabled" : ""} data-n="Boton Nuevo Canal" style="padding:4px 10px;font-size:20px;line-height:1" aria-label="Nuevo Canal">+</button></div>
       ${S.canales.map(k => `<button class="canal-row ${sel && k.id === sel.id ? "on" : ""}" data-act="sel" data-c="${k.id}" data-n="Fila de Canal">${cover(nombre(k), 44, canalHue(k))}
-        <span class="grow"><span class="nm ellip" style="display:block">${esc(nombre(k))}</span><small class="nums">${k.pend.length ? `${k.pend.length} esperando` : "al dia"}</small></span></button>`).join("")}
+        <span class="grow"><span class="nm ellip" style="display:block">${esc(nombre(k))}</span><small class="nums">~${whitelist(k)} artistas</small></span></button>`).join("")}
     </div>
-    <div class="card horario" data-n="Aviso de horario"><span>El bot revisa todos los dias. Lo nuevo entra a tus playlists los <b>viernes ${friTime}</b> <span class="faint">(${esc(TZ)})</span>.</span>
-      <span class="nums" data-n="Ultima revision">Ultima revision ${RUN.cuando} &middot; ${RUN.nuevos} nuevos ${RUN.ok ? `<span class="pill ok">ok</span>` : `<span class="pill crit">fallo</span>`}</span></div>
   </aside>`;
 }
 function emptyMain() {
@@ -463,49 +410,45 @@ function emptyMain() {
 
 // ---------- B1 Biblioteca ----------
 function vB1(c) {
-  const t = S.ui.tab; const lt = left();
-  const tabs = [["semana", "Esta semana"], ["artistas", "Artistas"], ["ajustes", "Playlist y Retencion"]];
-  const body = t === "semana" ? `<div class="b1-grid"><div class="b1-block" style="grid-column:1/-1"><h2>Lo que entra el viernes</h2>${trackRows(c, true)}</div>
-      <div class="b1-block"><h2>Ultima Entrega</h2>${ultimaEntrega(c)}</div></div>`
-    : t === "artistas" ? edArtistas(c)
-    : `<div class="b1-grid"><div class="b1-block"><h2>Playlist</h2>${edPlaylist(c)}</div><div class="b1-block"><h2>Que guarda</h2>${edRetencion(c)}${edGuardado(c)}</div></div>`;
+  const t = S.ui.tab;
+  const tabs = [["artistas", "Artistas"], ["playlist", "Playlist"], ["guarda", "Que guarda"]];
+  const body = t === "artistas" ? edArtistas(c) : t === "playlist" ? edPlaylist(c) : `<div class="stack" style="gap:18px">${edRetencion(c)}${edGuardado(c)}</div>`;
   return `<main class="card mainp" style="--h:${canalHue(c)}" data-n="Panel">
     <header class="b1-head" data-n="Cabecera de Canal"><div data-n="Portada">${cover(nombre(c), 200, canalHue(c))}</div>
       <div class="stack" style="gap:10px;min-width:0"><span class="eyebrow" style="color:rgba(255,255,255,.8)">Canal</span><h1 class="b1-title">${esc(nombre(c))}</h1>
-      <small style="color:rgba(255,255,255,.8)" class="nums"><b style="color:#fff">${esc(PERFIL.nombre)}</b> &middot; ~${whitelist(c)} artistas &middot; guarda ${retText(c)}${c.guardado ? " &middot; saltea Guardados" : ""}</small></div></header>
+      <small style="color:rgba(255,255,255,.8)" class="nums">${resumen(c)}${c.guardado ? " &middot; saltea lo guardado" : ""}</small></div></header>
     <div class="b1-body">${flash()}
-      <div class="b1-actions" data-n="Proxima Entrega"><span class="play" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4v16l13-8z"/></svg></span>
-        <div><div class="cuenta nums">${c.pend.length} Tracks el ${friDay}</div><small class="nums">faltan ${lt.d} d ${lt.h} h &middot; ${friTime}</small></div>
-        <span class="grow"></span>${entregaPill(c)}${desvincular(c)}</div>
+      <div class="b1-actions"><div class="tabs" data-n="Pestanas">${tabs.map(([k, l]) => `<button class="${t === k ? "on" : ""}" data-act="tab" data-t="${k}">${l}</button>`).join("")}</div>
+        <span class="grow"></span>${desvincular(c)}</div>
       ${confirmBox(c)}
-      <div class="tabs" data-n="Pestanas">${tabs.map(([k, l]) => `<button class="${t === k ? "on" : ""}" data-act="tab" data-t="${k}">${l}</button>`).join("")}</div>
-      ${body}
+      <div style="max-width:880px">${body}</div>
     </div></main>`;
 }
 
 // ---------- B2 Tablero ----------
 function vB2(c) {
-  const lt = left(); const d = S.ui.drawer;
-  const ret = c.target.kind === "existing" || c.retencion === "acum" ? 12 : c.retencion;
-  const weeks = Array.from({ length: 12 }, (_, i) => `<i class="${c.retencion === "acum" || c.target.kind === "existing" ? "acum" : i < ret ? "on" : ""}"></i>`).join("");
-  const srcAv = [...c.manual.map(id => A(id).nombre), ...c.seeds.map(s => P(s.pid)?.nombre).filter(Boolean)].slice(0, 6);
-  const drawers = { artistas: ["Artistas", edArtistas], playlist: ["Playlist", edPlaylist], retencion: ["Que guarda", c => edRetencion(c) + edGuardado(c)] };
+  const d = S.ui.drawer;
+  const acum = c.retencion === "acum" || c.target.kind === "existing";
+  const weeks = Array.from({ length: 12 }, (_, i) => `<i class="${acum ? "acum" : i < c.retencion ? "on" : ""}"></i>`).join("");
+  const seeds = c.seeds.map(s => P(s.pid)).filter(Boolean);
+  const drawers = { artistas: ["Artistas", edArtistas], playlist: ["Playlist", edPlaylist], retencion: ["Que guarda", edRetencion] };
   return `<main class="card mainp" data-n="Panel"><div class="b2">
-    <section class="b2-hero" data-n="Proxima Entrega"><div class="stack" style="gap:6px"><span class="eyebrow">Proxima Entrega</span><span class="big">${friDay}</span>
-      <span style="font-weight:700" class="nums">${friTime} &middot; ${totalPend()} Tracks esperando en tus ${S.canales.length} Canales</span></div>
-      <div class="clock nums" data-n="Cuenta regresiva"><div><b>${lt.d}</b><small>dias</small></div><div><b>${String(lt.h).padStart(2, "0")}</b><small>horas</small></div><div><b>${String(lt.m).padStart(2, "0")}</b><small>min</small></div></div></section>
     ${flash()}
     <div class="b2-canal" data-n="Cabecera de Canal"><div data-n="Portada">${cover(nombre(c), 72, canalHue(c))}</div><div class="grow"><span class="eyebrow">Canal</span><h1 class="ellip">${esc(nombre(c))}</h1></div>${desvincular(c)}</div>
     ${confirmBox(c)}
     <div class="bento">
-      <section class="tile lote-t" data-n="Tarjeta de Lote"><div class="lbl"><span class="eyebrow">Esta semana</span>${pendPill(c)}</div>${trackRows(c)}</section>
-      <button class="tile" data-act="drawer" data-d="artistas" data-n="Tarjeta de Artistas"><div class="lbl"><span class="eyebrow">Artistas</span><span class="edit">Editar &rsaquo;</span></div>
-        <span class="k nums">~${whitelist(c)}</span><small>${esc(srcText(c))}</small>${srcAv.length ? `<div class="stackav">${srcAv.map(n => avatar(n, 30)).join("")}</div>` : ""}</button>
+      <button class="tile hero" data-act="drawer" data-d="artistas" data-n="Tarjeta de Artistas"><div class="lbl"><span class="eyebrow">Artistas</span><span class="edit">Editar &rsaquo;</span></div>
+        <span class="k nums">~${whitelist(c)}</span>
+        <div class="stack" style="gap:8px">
+          ${seeds.map(p => `<div class="row">${cover(p.nombre, 32, hue(p.id))}<span class="grow ellip"><b>${esc(p.nombre)}</b></span><small class="nums">${p.artistas}</small></div>`).join("")}
+          ${c.manual.length ? `<div class="row"><div class="stackav">${c.manual.map(id => avatar(A(id).nombre, 32)).join("")}</div><span class="grow ellip">${c.manual.map(id => esc(A(id).nombre)).join(", ")}</span></div>` : ""}
+          ${c.follows ? `<div class="row"><b>Los que seguis</b><small class="nums">${PERFIL.follows}</small></div>` : ""}
+          ${!seeds.length && !c.manual.length && !c.follows ? `<span>Todavia no elegiste artistas.</span>` : ""}</div></button>
       <button class="tile" data-act="drawer" data-d="playlist" data-n="Tarjeta de Playlist"><div class="lbl"><span class="eyebrow">Playlist</span><span class="edit">Editar &rsaquo;</span></div>
-        <div class="row">${cover(nombre(c), 44, canalHue(c))}<div class="grow"><b class="ellip" style="display:block">${esc(nombre(c))}</b><small>${c.target.kind === "bot" ? "la creo el bot" : "ya la tenias"}</small></div></div>${capMeter(c)}</button>
+        <div class="row">${cover(nombre(c), 44, canalHue(c))}<div class="grow"><b class="ellip" style="display:block">${esc(nombre(c))}</b><small>${c.target.kind === "bot" ? "nueva del bot" : "una que ya tenias"}</small></div></div>${capMeter(c)}</button>
       <button class="tile" data-act="drawer" data-d="retencion" data-n="Tarjeta de Retencion"><div class="lbl"><span class="eyebrow">Que guarda</span><span class="edit">Editar &rsaquo;</span></div>
-        <div class="weeks" data-n="Semanas">${weeks}</div><small>${esc(retText(c))}${c.guardado ? " &middot; saltea Guardados" : ""}</small></button>
-      <section class="tile" data-n="Tarjeta de Ultima Entrega"><span class="eyebrow">Ultima Entrega</span>${ultimaEntrega(c)}</section>
+        <div class="weeks" data-n="Semanas">${weeks}</div><small>${esc(retText(c))}</small></button>
+      <section class="tile ancho" data-n="Tarjeta de Guardados">${edGuardado(c)}</section>
     </div></div></main>
     ${d && drawers[d] ? `<div class="drawer-bg" data-act="drawer-close"></div><aside class="drawer" data-n="Cajon de edicion"><div class="row"><h2 class="grow">${drawers[d][0]}</h2><button class="btn primario" data-act="drawer-close">Listo</button></div>${drawers[d][1](c)}</aside>` : ""}`;
 }
@@ -520,14 +463,11 @@ function vB3(c) {
     ["guardado", "Guardados", c.guardado ? "los salteo" : "los agrego igual", edGuardado],
   ];
   return `<main class="card mainp b3" data-n="Panel">
-    <div class="b3-franja" data-n="Franja de Entrega"><span class="big">${friDay}</span><span class="nums">${friTime} &middot; ${totalPend()} Tracks en camino</span></div>
+    <div class="b3-franja" data-n="Franja de Canal">${cover(nombre(c), 64, canalHue(c))}<div class="grow" style="min-width:0"><span class="big ellip" style="display:block">${esc(nombre(c))}</span><span class="nums">${resumen(c)}</span></div></div>
     <div class="b3-in">${flash()}
-      <div class="b3-head" data-n="Cabecera de Canal"><div data-n="Portada">${cover(nombre(c), 96, canalHue(c))}</div><div class="grow stack" style="gap:6px"><span class="eyebrow">Canal</span><h1>${esc(nombre(c))}</h1><div class="row wrap" style="gap:6px">${pendPill(c)}${entregaPill(c)}</div></div></div>
       <section class="ajustes" data-n="Lista de ajustes">${rows.map(([k, key, val, ed]) => `<div class="ajuste ${o === k ? "open" : ""}" data-n="Fila de ajuste">
         <button data-act="open" data-o="${k}" aria-expanded="${o === k}"><span class="key">${key}</span><span class="val ellip nums">${val}</span><span class="chev">&rsaquo;</span></button>
         ${o === k ? `<div class="body">${ed(c)}</div>` : ""}</div>`).join("")}</section>
-      <section class="stack"><h2>Lo que entra el viernes</h2>${trackRows(c)}</section>
-      <section class="stack"><h2>Ultima Entrega</h2>${ultimaEntrega(c)}</section>
       <div>${S.ui.confirm === c.id ? confirmBox(c) : desvincular(c)}</div>
     </div></main>`;
 }
@@ -538,7 +478,7 @@ function vLogin() {
   return `<div class="login" data-n="Pantalla de login">
     <div class="marca" data-n="Marca"><i></i>Radar de Viernes</div>
     <h1 class="frase" data-n="Frase de login">Lo nuevo de <span class="tok">tus artistas</span>, todos los <em>viernes</em> en tu Spotify.</h1>
-    <p class="sub">Elegis de quien, elegis en que playlist. El bot revisa todos los dias y el viernes te deja todo junto.</p>
+    <p class="sub">Elegis de que artistas y en que playlist. Del resto nos encargamos.</p>
     <div class="row wrap" style="gap:16px"><button class="btn primario grande" data-act="login" data-n="Boton Conectar">Conectar con Spotify</button></div>
   </div>`;
 }
@@ -582,7 +522,7 @@ function render() {
   document.body.classList.toggle("names", S.ui.names);
   const dbg = document.getElementById("debug");
   dbg.hidden = !S.ui.debug;
-  if (S.ui.debug) dbg.textContent = JSON.stringify({ user: S.user, sim: S.sim, canales: S.canales.map(c => ({ ...c, pend: c.pend.length, whitelist: whitelist(c) })), ui: S.ui }, null, 2);
+  if (S.ui.debug) dbg.textContent = JSON.stringify({ user: S.user, sim: S.sim, canales: S.canales.map(c => ({ ...c, whitelist: whitelist(c) })), ui: S.ui }, null, 2);
   S.ui.flash = null;
   hideNames();
 }
@@ -608,7 +548,7 @@ document.addEventListener("mouseover", e => {
 
 // ---------- acciones ----------
 function newCanal() {
-  const c = { id: "c" + seq++, follows: false, seeds: [], manual: [], target: { kind: "bot", nombre: "Canal " + (S.canales.length + 1) }, items: 0, retencion: 4, guardado: true, pend: [], entrega: null };
+  const c = { id: "c" + seq++, follows: false, seeds: [], manual: [], target: { kind: "bot", nombre: "Canal " + (S.canales.length + 1) }, items: 0, retencion: 4, guardado: true };
   S.canales.push(c); S.ui.sel = c.id; S.ui.tab = "artistas"; S.ui.open = "artistas"; S.ui.drawer = "artistas";
 }
 document.addEventListener("click", e => {
@@ -683,18 +623,13 @@ document.addEventListener("keydown", e => {
 });
 function selectRedir() { const r = document.createRange(); r.selectNodeContents(document.getElementById("redir")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
 
-// Canales armados con tus playlists. Lote y Entregas inventados (titulos de ejemplo).
+// Canales armados con tus playlists.
 S.canales = [
   { id: "c1", hue: 322, follows: false, seeds: [{ pid: "p7", feats: true }, { pid: "p6", feats: false }], manual: [idx("Duki"), idx("YSY A")],
-    target: { kind: "bot", nombre: "Radar Trap" }, items: 212, retencion: 4, guardado: true,
-    pend: [["Myke Towers", "Tema nuevo (ejemplo)", "Single de ejemplo"], ["Mora", "Estreno (ejemplo)", "Album de ejemplo"], ["Mora", "Track 2 (ejemplo)", "Album de ejemplo"], ["Omar Courtz", "Colaboracion (ejemplo)", "Single de ejemplo"], ["Duki", "Adelanto (ejemplo)", "Single de ejemplo"], ["Eladio Carrion", "Remix (ejemplo)", "Single de ejemplo"]],
-    entrega: { cuando: "vie 25 sep", ok: true, ins: 23, ret: 18 } },
+    target: { kind: "bot", nombre: "Radar Trap" }, items: 212, retencion: 4, guardado: true },
   { id: "c2", hue: 28, follows: false, seeds: [{ pid: "p12", feats: false }, { pid: "p13", feats: false }], manual: [idx("Romeo Santos")],
-    target: { kind: "existing", pid: "p11", nombre: "Oldie but Goldie" }, items: 0, retencion: "acum", guardado: false,
-    pend: [["Prince Royce", "Bachata (ejemplo)", "Single de ejemplo"], ["Daddy Yankee", "Reedicion (ejemplo)", "Album de ejemplo"]],
-    entrega: { cuando: "vie 25 sep", ok: false, ins: 7, ret: 0, error: "Spotify respondio 502 en el Track 8 de 15. Se reintenta manana." } },
+    target: { kind: "existing", pid: "p11", nombre: "Oldie but Goldie" }, items: 0, retencion: "acum", guardado: false },
 ];
-RUN.artistas = S.canales.reduce((n, c) => n + whitelist(c), 0); RUN.nuevos = totalPend();
 
 const h = (location.hash || "").slice(1).toUpperCase();
 if (VARIANTS[h]) { S.ui.v = h; S.user = PERFIL; }
