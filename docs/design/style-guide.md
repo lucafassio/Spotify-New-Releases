@@ -5,67 +5,70 @@ cada elemento por el mismo nombre. Se actualiza en el mismo commit que cambia la
 
 Como usar los nombres: en el prototipo, el boton **Nombres** de la barra de abajo (o la tecla
 `N`) marca cada elemento. Al pasar el mouse muestra el nombre y la ruta completa, por ejemplo
-`Panel > Editor de Artistas > Tarjeta de Seed Playlist`. Un click copia el nombre. Para pedir un
-cambio alcanza con "en la Tarjeta de Seed Playlist, ...". Si un nombre choca con el glosario de
+`Panel > Columna Fuentes > Fila de Seed Playlist`. Un click copia el nombre. Para pedir un
+cambio alcanza con "en la Fila de Seed Playlist, ...". Si un nombre choca con el glosario de
 `CONTEXT.md`, gana el glosario y se renombra aca.
 
-Estado: base definida (#10). Variante del Panel pendiente de eleccion en #7 (B1, B2 o B3).
+Estado: base definida (#10). Layout del Panel en revision en #7 (ronda 4: dashboard fijo).
 
-## Principio
+## Principios
 
-El Panel es para configurar, no para mirar. Se muestra solo lo que el User elige o necesita
-saber para elegir. No van: canciones agregadas o por agregar, historial de Entregas, horarios,
-Runs, ni explicaciones de como trabaja el bot por dentro. Un dato interno aparece solo si le
-pide una accion al User (ej: Medidor de tope al 90%).
+- **Configurar, no mirar.** Se muestra lo que el User elige o necesita saber para elegir. No
+  van: canciones agregadas o por agregar, historial de Entregas, horarios, Runs, ni
+  explicaciones de como trabaja el bot. Un dato interno aparece solo si pide una accion (ej:
+  Medidor de tope al 90%).
+- **Dashboard de pantalla fija.** La pagina nunca scrollea: ocupa el alto de la ventana. Scrollea
+  cada panel por dentro, con la barra de scroll del diseno (fina, `--scroll`, pildora, sin
+  flechas). En celular (< 860px) se apila y ahi si scrollea la pagina.
+- **Pantalla llena.** Al menos 70% del area con contenido util. Lo que sobra se llena con
+  pistas sacadas de la biblioteca del User (quien pesa, que falta, que se repite), nunca con
+  relleno decorativo.
+- **Listas, no grillas**, para playlists: cada fila se despliega para mostrar sus artistas.
 
 ## Color
 
 Tema unico oscuro, a proposito: la app vive al lado de Spotify y comparte su base negro + verde.
-Verde solo para lo que es accion principal o estado "vivo" (lo que entra el viernes). Nada de
-verde decorativo.
+Verde solo para accion principal, seleccion y datos que cuentan. Nada de verde decorativo.
 
 | Token | Hex | Uso |
 | --- | --- | --- |
-| `--negro` | `#000000` | Fondo de pagina, texto sobre verde |
-| `--fondo` | `#0B0B0B` | Reservado |
-| `--superficie` | `#141414` | Paneles: Barra lateral, Panel, Cajon de edicion |
-| `--elevada` | `#1E1E1E` | Tarjetas, inputs, filas en hover |
-| `--elevada-2` | `#2A2A2A` | Hover de tarjetas, fila seleccionada, pista de Interruptor apagado |
-| `--linea` | `#2E2E2E` | Separadores |
+| `--negro` | `#000000` | Fondo de pagina y de columnas, texto sobre verde |
+| `--superficie` | `#141414` | Paneles (Barra lateral, Panel) y cajas dentro de columnas |
+| `--elevada` | `#1E1E1E` | Inputs, fichas apagadas, filas en hover, pista de barras |
+| `--elevada-2` | `#2A2A2A` | Fila seleccionada, pista de Interruptor apagado |
+| `--linea` | `#262626` | Separadores |
 | `--texto` | `#F5F5F2` | Texto principal |
 | `--texto-2` | `#A7A9A4` | Texto secundario |
-| `--texto-3` | `#6E716B` | Numeracion, pistas, placeholders |
-| `--verde` | `#1ED760` | Boton primario, Interruptor encendido, seleccion, bloque destacado de cada variante |
-| `--verde-hondo` | `#13A049` | Rayado de Retencion Acumulativa |
+| `--texto-3` | `#6E716B` | Pistas, "+N mas", barras de lo que no esta en ningun Canal |
+| `--verde` | `#1ED760` | Boton primario, Interruptor encendido, seleccion, barras |
+| `--verde-hondo` | `#13A049` | Rayado de "guarda todo" en Semanas |
+| `--verde-suave` | 13% de verde | Fondo de Ficha de artista incluida |
 | `--verde-tinta` | `#04210F` | Texto secundario sobre verde |
+| `--scroll` / `--scroll-hover` | `#333333` / `#4A4A4A` | Barra de scroll de los paneles |
 | `--lima` | `#C6F432` | Solo herramientas del prototipo (capa de Nombres) |
-| `--ambar` | `#F5B642` | Aviso: tope al 90%, Premium |
+| `--ambar` | `#F5B642` | Aviso: tope al 90%, Premium, 0 artistas seguidos |
 | `--rojo` | `#FF6B6B` | Error, tope al 95%, Desvincular |
 
-Semanticos (`--ambar`, `--rojo`, y `--verde` en Etiqueta ok) van siempre con su version
-`-suave` (14% de opacidad) de fondo.
-
 **Portadas generadas**: cada Canal y cada playlist tiene un tono (`--h`, 0-360) que arma un
-degradado de dos colores con la inicial grande en negro translucido. El tono del Canal tambien
-tine su Cabecera en B1.
+degradado con la inicial grande en negro translucido. El tono del Canal tine su Cabecera.
 
 ## Tipografia
 
 | Rol | Fuente | Uso |
 | --- | --- | --- |
-| Display | Archivo (ancho variable 62-125, peso 400-900) | Titulos, Frase de login, numeros grandes. Angosta (`font-stretch` 68-85%) y pesada (800-900) |
+| Display | Archivo (ancho variable, peso 400-900) | Titulos, frases, numeros grandes. Angosta (`font-stretch` 70-85%) y pesada (800-900) |
 | Texto | Figtree 400-700 | Todo lo demas |
 | Mono | DM Mono 400-500 | Client ID, redirect URI |
 
-Escala: 11 (eyebrow, mayusculas +0.12em) / 13 (small) / 15 (texto) / 22-28 (h2) / 40-88 (h1 y
-frases, con `clamp`).
+Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de columna) / 34
+(h1 de Cabecera) / 40-88 (frases de login).
 
 ## Forma
 
-- Radios: `--r-s` 6px (inputs, portadas chicas), `--r-m` 10px (paneles, avisos), `--r-l` 16px
-  (tarjetas del Tablero). Botones, Etiquetas, Chips y Selectores: pildora (99px).
-- Sin bordes en tarjetas: se separan por cambio de superficie (`--superficie` > `--elevada` >
-  `--elevada-2`). Borde solo en Boton secundario y en seleccion (`inset` verde).
+- Radios: `--r-s` 6px (inputs, portadas), `--r-m` 10px (columnas, cajas), `--r-l` 14px
+  (paneles). Botones, fichas y Selectores: pildora.
+- Capas: pagina negra > Panel `--superficie` > Columna negra > Caja `--superficie`. Sin bordes;
+  borde solo en Boton secundario y en seleccion (`inset` verde).
 
 ## Nombres de elementos
 
@@ -73,17 +76,19 @@ frases, con `clamp`).
 
 | Nombre | Que es |
 | --- | --- |
-| Boton primario | Pildora verde, texto negro. Una por pantalla |
-| Boton secundario | Pildora con contorno gris |
-| Boton fantasma | Solo texto gris, sin contorno |
+| Boton primario | Pildora verde, texto negro. Una por vista |
+| Boton secundario | Pildora con contorno gris ("Sumar", "Seguir") |
+| Boton fantasma | Solo texto gris |
 | Boton Desvincular | Texto rojo, abre la Confirmacion de desvincular |
-| Interruptor | Switch on/off (verde cuando esta prendido) |
-| Selector | Fila de pildoras donde una queda blanca (Selector de Target, Selector de Retencion) |
-| Etiqueta | Pildora chica de estado: ok (verde), aviso (ambar), error (rojo), neutra (gris) |
+| Interruptor | Switch on/off (verde prendido) |
+| Selector | Fila de pildoras donde una queda blanca |
 | Aviso | Caja de texto con fondo: neutra, ok, warn, crit |
-| Chip | Pildora con avatar y x para quitar |
+| Chip | Pildora con avatar y x para quitar (artistas a mano) |
+| Ficha de artista | Pildora con avatar; verde si esta incluido, tachada si se saco |
 | Portada | Cuadrado con degradado e inicial |
-| Medidor de tope | Barra de canciones sobre 10.000; solo aparece desde el 90% |
+| Barras | Grafico de barras horizontal: nombre, barra verde, numero |
+| Caja | Bloque `--superficie` dentro de una Columna, con titulo h3 |
+| Medidor de tope | Barra sobre 10.000 canciones; solo desde el 90% |
 
 ### Login
 
@@ -100,53 +105,57 @@ frases, con `clamp`).
 | Formulario de claves | Client ID + Client secret |
 | Aviso Premium | Aviso ambar sobre Premium |
 
-### Panel (comun a B1, B2, B3)
+### Estructura
 
 | Nombre | Que es |
 | --- | --- |
-| Barra lateral | Columna izquierda (arriba en celular) |
-| Perfil | Avatar, nombre y Salir |
-| Lista de Canales | Tarjeta con los Canales y el + |
-| Fila de Canal | Portada chica, nombre y cantidad de artistas |
+| Barra lateral | Panel izquierdo fijo |
+| Boton Inicio | Primera fila: "Tu biblioteca" |
+| Lista de Canales | Canales del User con el +; scrollea sola |
+| Fila de Canal | Portada, nombre y cantidad de artistas |
 | Boton Nuevo Canal | El + de la Lista de Canales |
-| Panel | Area derecha con el Canal elegido |
-| Cabecera de Canal | Portada + nombre del Canal + resumen (artistas, que guarda) |
-| Confirmacion de desvincular | Caja roja con las dos formas de borrar |
+| Perfil | Abajo de la Barra lateral: avatar, nombre, Salir |
+| Panel | Area derecha: Cabecera + Columnas |
+| Cabecera de Canal | Portada, nombre del Canal y Desvincular, con el tono del Canal |
+| Confirmacion de desvincular | Globo oscuro-rojo bajo la Cabecera con las dos formas de borrar |
+| Columna | Cada una de las tres columnas del Panel; scrollea sola |
 
-### Editores
+### Vista Canal
 
 | Nombre | Que es |
 | --- | --- |
-| Editor de Artistas | Todo lo que arma la Whitelist |
-| Fuente Follows | Interruptor de artistas seguidos |
-| Seed Playlists | Grilla de playlists del User |
-| Tarjeta de Seed Playlist | Una playlist de la grilla; tilde verde si esta elegida, apagada si es ajena |
-| Interruptor Feats | Por cada Seed Playlist elegida, sumar feats |
-| Artistas a mano | Chips + Buscador |
-| Ficha de artista | Chip de un artista a mano |
-| Buscador de artistas | Input para sumar artistas a mano |
-| Total de Whitelist | Aviso con la cantidad final de artistas |
-| Editor de Playlist | Target Playlist del Canal |
-| Selector de Target | "Una nueva del bot" / "Una que ya tengo" |
-| Nombre de playlist | Input del nombre (solo playlist del bot) |
-| Selector de playlist existente | Lista de playlists propias elegibles |
-| Editor de Retencion | Cuantas semanas guarda |
-| Selector de Retencion | 1 / 2 / 4 / 8 / 12 semanas / Todo |
-| Interruptor Guardado | Saltear lo ya guardado |
+| Columna Fuentes | "De quien": todo lo que arma la Whitelist |
+| Fuente Follows | Caja con el Interruptor de artistas seguidos |
+| Lista de Seed Playlists | Todas las playlists del User, una fila cada una |
+| Fila de Seed Playlist | Interruptor, portada, nombre, cantidad de artistas y flecha |
+| Interruptor de playlist | Prende o apaga la playlist como fuente del Canal |
+| Boton ver artistas | Flecha que despliega la fila |
+| Artistas de la playlist | Fichas de artista desplegadas; tocar una la saca del Canal |
+| Interruptor Feats | Dentro de la fila desplegada: sumar invitados |
+| Artistas a mano | Caja con Chips + Buscador de artistas |
+| Columna Reglas | "Donde y como" |
+| Editor de Playlist | Caja: Selector de Target + nombre o lista de playlists propias |
+| Selector de Target | "Nueva" / "Una mia" |
+| Nombre de playlist | Input del nombre (playlist nueva) |
+| Selector de playlist existente | Lista con scroll de playlists propias |
+| Editor de Retencion | Caja "Cuanto guarda": Selector de Retencion + Semanas |
+| Semanas | 12 barritas que dibujan cuanto guarda |
+| Interruptor Guardado | Caja "Saltear lo que ya tengo" |
+| Resumen de Canal | Caja "En una frase": el Canal contado en una oracion |
+| Columna Pistas | Datos de la biblioteca que ayudan a decidir |
+| Quienes mas aparecen | Barras de los artistas del Canal por apariciones en tus playlists |
+| Sugerencias | "Te faltan en este Canal": artistas de otras playlists tuyas con boton Sumar |
+| Cruce con otros Canales | Artistas en comun con cada otro Canal |
 
-### Propios de cada variante
+### Vista Inicio (Tu biblioteca)
 
-| Variante | Nombre | Que es |
-| --- | --- | --- |
-| B1 Biblioteca | Pestanas | Artistas / Playlist / Que guarda |
-| B2 Tablero | Tarjeta de Artistas | Bloque verde grande con total, Seed Playlists y artistas a mano |
-| B2 Tablero | Tarjeta de Playlist, de Retencion | Bloques oscuros; abren el Cajon |
-| B2 Tablero | Tarjeta de Guardados | Bloque ancho con el Interruptor Guardado, se edita ahi mismo |
-| B2 Tablero | Semanas | 12 barritas que muestran la Retencion |
-| B2 Tablero | Cajon de edicion | Panel que entra desde la derecha con un Editor |
-| B3 Ajustes | Franja de Canal | Banda verde con portada, nombre y resumen del Canal |
-| B3 Ajustes | Lista de ajustes | Filas que se despliegan |
-| B3 Ajustes | Fila de ajuste | Nombre, valor actual y flecha |
+| Nombre | Que es |
+| --- | --- |
+| Cabecera de Inicio | "Hola, Luca" |
+| Numeros de biblioteca | 4 numeros: playlists, artistas, seguidos, Canales |
+| Segui a tus mas escuchados | Top 8 artistas con Seguir y "Seguir a los 8" |
+| Top de biblioteca | Barras de los 14 artistas con mas temas; gris si no estan en ningun Canal |
+| Tarjeta de gemelas | Dos playlists que se pisan, con "Unir en una" y "Dejarlas asi" |
 
 ### Del prototipo (no son producto)
 
