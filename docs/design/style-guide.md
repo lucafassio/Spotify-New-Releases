@@ -9,7 +9,7 @@ Como usar los nombres: en el prototipo, el boton **Nombres** de la barra de abaj
 cambio alcanza con "en la Fila de Seed Playlist, ...". Si un nombre choca con el glosario de
 `CONTEXT.md`, gana el glosario y se renombra aca.
 
-Estado: base definida (#10). Layout del Panel en revision en #7 (ronda 4: dashboard fijo).
+Estado: base definida (#10). Layout base elegido en #7 (ronda 4, dashboard fijo); pulido visual pendiente.
 
 ## Principios
 
