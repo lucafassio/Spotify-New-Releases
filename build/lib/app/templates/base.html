@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Radar de Viernes{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Figtree:wght@400..700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
+  <style>
+    /* tokens de docs/design/style-guide.md */
+    :root {
+      color-scheme: dark;
+      --negro: #000000;
+      --superficie: #141414;
+      --elevada: #1E1E1E;
+      --elevada-2: #2A2A2A;
+      --linea: #262626;
+      --texto: #F5F5F2;
+      --texto-2: #A7A9A4;
+      --texto-3: #6E716B;
+      --verde: #1ED760;
+      --verde-suave: rgba(30, 215, 96, 0.13);
+      --ambar: #F5B642;
+      --ambar-suave: rgba(245, 182, 66, 0.14);
+      --rojo: #FF6B6B;
+      --rojo-suave: rgba(255, 107, 107, 0.14);
+      --display: 'Archivo', 'Arial Narrow', system-ui, sans-serif;
+      --body: 'Figtree', 'Segoe UI', system-ui, sans-serif;
+      --r-s: 6px; --r-m: 10px; --r-l: 14px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { margin: 0; background: var(--negro); color: var(--texto); font: 14px/1.45 var(--body); padding: 8px 16px; }
+    h1, h2, h3 { font-family: var(--display); margin: 0; line-height: 1.05; text-wrap: balance; }
+    p { margin: 0; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    a { color: inherit; }
+    :focus-visible { outline: 2px solid var(--verde); outline-offset: 2px; }
+    small { font-size: 12.5px; color: var(--texto-2); }
+    .muted { color: var(--texto-2); }
+    .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--texto-2); }
+    .grow { flex: 1; min-width: 0; }
+
+    .btn { display: inline-block; border: 1px solid var(--texto-3); background: none; color: var(--texto); padding: 7px 14px; border-radius: 99px; font-weight: 700; font-size: 13px; white-space: nowrap; text-decoration: none; }
+    .btn:hover { border-color: var(--texto); }
+    .btn.primario { background: var(--verde); border-color: var(--verde); color: var(--negro); }
+    .btn.primario:hover { background: #3BE477; }
+    .btn.fantasma { border-color: transparent; color: var(--texto-2); padding-inline: 8px; }
+    .btn.fantasma:hover { color: var(--texto); }
+    .btn.chico { padding: 4px 10px; font-size: 12px; }
+    .btn.grande { padding: 14px 30px; font-size: 16px; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .aviso { border-radius: var(--r-m); padding: 10px 12px; font-size: 13px; background: var(--elevada); color: var(--texto-2); }
+    .aviso b { color: var(--texto); }
+    .aviso.warn { background: var(--ambar-suave); color: #F8D59A; }
+    .aviso.crit { background: var(--rojo-suave); color: #FFB3B3; }
+    .aviso.ok { background: var(--verde-suave); color: #9EF0BC; }
+
+    .marca { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 800; font-stretch: 80%; font-size: 19px; }
+    .marca i { width: 24px; height: 24px; border-radius: 50%; background: var(--verde); display: grid; place-items: center; }
+    .marca i::after { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--negro); }
+    .frase { font-family: var(--display); font-weight: 800; font-stretch: 78%; font-size: clamp(38px, 7.2vw, 88px); line-height: .98; letter-spacing: -0.025em; }
+    .frase em { font-style: normal; color: var(--verde); }
+    .frase .tok { color: var(--verde); border-bottom: 4px dotted var(--verde); }
+    {% block style %}{% endblock %}
+  </style>
+</head>
+<body>
+  {% block content %}{% endblock %}
+</body>
+</html>

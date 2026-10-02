@@ -1,0 +1,28 @@
+# Blueprint de Render (ADR 0002): web en Render Free con auto-deploy desde main.
+# Los secrets se cargan a mano al crear el Blueprint (sync: false), nunca van en este archivo.
+services:
+  - type: web
+    name: spotify-new-releases
+    runtime: python
+    plan: free
+    # Neon vive en us-east-1
+    region: virginia
+    branch: main
+    autoDeployTrigger: commit
+    buildCommand: pip install .
+    # pre-deploy es solo para planes pagos: las migraciones corren al arrancar, con lock contra el Tick
+    startCommand: python -m app.migrate && uvicorn app.web:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips "*"
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_CLIENT_SECRET
+        sync: false
+      - key: SPOTIFY_REDIRECT_URI
+        sync: false
+      - key: FERNET_KEY
+        sync: false
+      - key: SESSION_SECRET
+        sync: false

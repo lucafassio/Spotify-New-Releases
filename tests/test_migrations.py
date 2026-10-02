@@ -1,7 +1,8 @@
 import psycopg
 import pytest
 
-from app.migrate import apply_migrations
+from app.db import connect
+from app.migrate import MIGRATIONS_LOCK, apply_migrations
 
 ADR_0006_TABLES = {
     'users',
@@ -29,6 +30,15 @@ def test_adr_0006_tables_exist(db):
 
 def test_migrations_are_idempotent(db):
     assert apply_migrations(db) == []
+
+
+def test_migrations_release_their_lock(db):
+    apply_migrations(db)
+
+    # si el lock quedara tomado, la web y el Tick se colgarian esperando al proximo migrate
+    with connect() as other:
+        assert other.execute('SELECT pg_try_advisory_lock(%s)', (MIGRATIONS_LOCK,)).fetchone()[0]
+        other.execute('SELECT pg_advisory_unlock(%s)', (MIGRATIONS_LOCK,))
 
 
 def test_run_is_one_row_per_user_and_day(db):
