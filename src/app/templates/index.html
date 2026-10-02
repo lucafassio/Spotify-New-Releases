@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<main style="padding: 48px 16px; max-width: 640px; margin: 0 auto;">
+  <h1>Spotify New Releases</h1>
+  <p style="color: var(--texto-2);">Esqueleto del servicio. El login llega en el siguiente ticket.</p>
+  <button hx-get="/health" hx-target="#health" hx-swap="innerHTML"
+          style="background: var(--verde); color: var(--negro); border: 0; border-radius: 999px; padding: 10px 20px; font: inherit; font-weight: 700; cursor: pointer;">
+    Probar servidor
+  </button>
+  <span id="health" style="margin-left: 12px;"></span>
+</main>
+{% endblock %}
