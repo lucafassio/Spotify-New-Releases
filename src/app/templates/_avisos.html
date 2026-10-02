@@ -1,0 +1,8 @@
+<div class="avisos">
+  {% if disconnected %}
+  <div class="aviso crit" data-n="Aviso de desconexion">Spotify nos corto el acceso a tu cuenta, asi que no estamos buscando novedades. <a href="/login" hx-boost="false"><b>Volver a conectar</b></a></div>
+  {% elif reconnected_since %}
+  <div class="aviso" data-n="Aviso de reconexion">Estuviste desconectado desde el {{ reconnected_since }}. Las novedades de ese periodo no se buscaron.</div>
+  {% endif %}
+  {% if flash %}<div class="aviso ok" data-n="Aviso de accion">{{ flash }}</div>{% endif %}
+</div>

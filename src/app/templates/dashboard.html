@@ -1,58 +1,16 @@
-{% extends 'base.html' %}
+{% extends 'shell.html' %}
 
-{% block style %}
-    body { overflow: hidden; }
-    .shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 8px; height: 100%; }
-    .panel { background: var(--superficie); border-radius: var(--r-l); min-height: 0; }
-    .side { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
-    .side .marca { padding: 16px 16px 10px; }
-    .nav-inicio { margin: 0 8px; }
-    .nav-row { display: flex; gap: 12px; align-items: center; padding: 8px; border: 0; background: none; border-radius: var(--r-s); text-align: left; width: 100%; }
-    .nav-row.on { background: var(--elevada-2); }
-    .nav-row .nm { font-weight: 600; display: block; }
-    .nav-row.on .nm { color: var(--verde); }
-    .nav-icon { width: 40px; height: 40px; border-radius: var(--r-s); background: var(--elevada-2); display: grid; place-items: center; flex: none; }
-    .side-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 8px 6px 16px; }
-    .perfil { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--linea); }
-    .avatar { width: 32px; height: 32px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 11px; color: rgba(0,0,0,.7); background: hsl(140 55% 62%); }
-    .main { display: grid; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; }
-    .head { padding: 16px 20px; background: linear-gradient(90deg, hsl(140 45% 20%) 0%, var(--superficie) 70%); border-radius: var(--r-l) var(--r-l) 0 0; }
-    .head h1 { font-size: 34px; font-weight: 900; font-stretch: 80%; letter-spacing: -0.02em; }
-    .avisos { display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 0; }
-    .vacio { display: grid; place-items: center; padding: 24px; text-align: center; }
-    @media (max-width: 859px) {
-      body { overflow: auto; }
-      .shell { grid-template-columns: 1fr; height: auto; }
-    }
-{% endblock %}
-
-{% block content %}
-<div class="shell">
-  <aside class="panel side" data-n="Barra lateral">
-    <div class="marca" data-n="Marca"><i></i>Radar de Viernes</div>
-    <div class="nav-inicio">
-      <button class="nav-row on" data-n="Boton Inicio"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg></span><span class="grow"><span class="nm">Tu biblioteca</span><small>playlists y artistas</small></span></button>
-    </div>
-    <div data-n="Lista de Canales">
-      <div class="side-head"><span class="eyebrow">Canales &middot; 0/5</span>
-        <button class="btn fantasma" disabled data-n="Boton Nuevo Canal" style="font-size:20px;line-height:1;padding:2px 10px" aria-label="Nuevo Canal">+</button></div>
-    </div>
-    <div class="perfil" data-n="Perfil">
-      <span class="avatar">{{ display_name[:2] | upper }}</span>
-      <div class="grow"><b>{{ display_name }}</b></div>
-      <form method="post" action="/logout"><button class="btn fantasma chico">Salir</button></form>
-    </div>
-  </aside>
-  <section class="panel main" data-n="Panel">
-    <header class="head" data-n="Cabecera de Inicio"><span class="eyebrow">Tu biblioteca</span><h1>Hola, {{ display_name }}</h1></header>
-    <div class="avisos">
-      {% if disconnected %}
-      <div class="aviso crit" data-n="Aviso de desconexion">Spotify nos corto el acceso a tu cuenta, asi que no estamos buscando novedades. <a href="/login"><b>Volver a conectar</b></a></div>
-      {% elif reconnected_since %}
-      <div class="aviso" data-n="Aviso de reconexion">Estuviste desconectado desde el {{ reconnected_since }}. Las novedades de ese periodo no se buscaron.</div>
-      {% endif %}
-    </div>
-    <div class="vacio"><p class="muted">Todavia no tenes Canales.</p></div>
-  </section>
-</div>
+{% block panel %}
+<section class="panel main" data-n="Panel">
+  <header class="head" data-n="Cabecera de Inicio"><div class="grow"><span class="eyebrow">Tu biblioteca</span><h1>Hola, {{ display_name }}</h1></div></header>
+  {% include '_avisos.html' %}
+  <div class="vacio">
+    {% if canales %}
+    <p class="muted">Elegi un Canal de la izquierda para ver de quien trae novedades y a que playlist.</p>
+    {% else %}
+    <p class="muted">Todavia no tenes Canales.</p>
+    <a class="btn primario" href="/canales/nuevo">Crear un Canal</a>
+    {% endif %}
+  </div>
+</section>
 {% endblock %}

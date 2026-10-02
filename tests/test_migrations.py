@@ -4,11 +4,12 @@ import pytest
 from app.db import connect
 from app.migrate import MIGRATIONS_LOCK, apply_migrations
 
+# manual_source_artists paso a source_artists en 0002 (#14)
 ADR_0006_TABLES = {
     'users',
     'canales',
     'artist_sources',
-    'manual_source_artists',
+    'source_artists',
     'whitelist_artists',
     'checkpoints',
     'lotes',

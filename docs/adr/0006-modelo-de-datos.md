@@ -9,6 +9,15 @@ status: accepted
 > al refrescar marca al User Desconectado: se setea `disconnected_at` y se borra el token
 > muerto. El callback de login limpia ambos.
 
+> **Enmienda 2026-10-02 (ticket #14):** `ManualSourceArtist` pasa a `SourceArtist(artist_source_id,
+> artist_id, name, feat)` y guarda los artistas de todo Artist Source, no solo la lista manual:
+> lo que aporta cada Seed Playlist (principal o feat) y los follows. Asi la Whitelist se
+> recalcula en SQL sin volver a leer Spotify en cada cambio, y la UI muestra nombres sin
+> `GET /artists` (sin batch desde feb 2026). `ArtistSource` suma `include_feats` (toggle por
+> Seed Playlist) y un indice unico por (Canal, type, playlist). `Canal` suma `target_name`,
+> cache del nombre de la Target para la Barra lateral, refrescado al leer `GET /me/playlists`.
+> Releer las fuentes de Spotify es `canales.refresh_sources`, pensado para el Run diario.
+
 Las decisiones de #5 y #6 (ADR 0002-0005) ya fijaron la semantica; esto cierra el shape de
 tablas para implementarla. Tokens y credenciales de Own App se guardan cifrados (Fernet) en
 User, nunca las de Shared App (viven en env/GitHub Secrets, ADR 0002). WhitelistArtist
@@ -27,10 +36,10 @@ mismo dia hace upsert sobre la misma fila.
 ## Tablas
 
 - `User(id, spotify_user_id, connection_mode, client_id NULL, client_secret_enc NULL, refresh_token_enc NULL, disconnected_at NULL, created_at)`
-- `Canal(id, user_id, target_playlist_id, target_created_by_bot, retencion_n NULL, guardado_filter, created_at)`
-- `ArtistSource(id, canal_id, type[seed_playlist|manual|followed], playlist_id NULL)` — varias
+- `Canal(id, user_id, target_playlist_id, target_name, target_created_by_bot, retencion_n NULL, guardado_filter, created_at)`
+- `ArtistSource(id, canal_id, type[seed_playlist|manual|followed], playlist_id NULL, include_feats)` — varias
   filas del mismo type por Canal, ej. multiples Seed Playlists
-- `ManualSourceArtist(artist_source_id, artist_id)`
+- `SourceArtist(artist_source_id, artist_id, name, feat)` (era `ManualSourceArtist`, enmienda #14)
 - `WhitelistArtist(canal_id, artist_id, added_at)`
 - `Checkpoint(user_id, artist_id, group, total, first_page_ids)`
 - `Lote(id, canal_id, week_start, status[abierto|cerrado], closed_at NULL, delivered_at NULL, attempt_count)`

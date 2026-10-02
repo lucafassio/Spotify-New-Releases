@@ -10,6 +10,7 @@ cambio alcanza con "en la Fila de Seed Playlist, ...". Si un nombre choca con el
 `CONTEXT.md`, gana el glosario y se renombra aca.
 
 Estado: base definida (#10). Layout base elegido en #7 (ronda 4, dashboard fijo); pulido visual pendiente.
+Vista Canal y Vista Nuevo Canal implementadas en #14 (sin Columna Pistas ni fichas tachables todavia).
 
 ## Principios
 
@@ -84,7 +85,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Selector | Fila de pildoras donde una queda blanca |
 | Aviso | Caja de texto con fondo: neutra, ok, warn, crit |
 | Chip | Pildora con avatar y x para quitar (artistas a mano) |
-| Ficha de artista | Pildora con avatar; verde si esta incluido, tachada si se saco |
+| Ficha de artista | Pildora con avatar; verde si esta incluido, gris si es un feat que no entra. Tachada si se saco (pendiente, no implementado) |
 | Portada | Cuadrado con degradado e inicial |
 | Barras | Grafico de barras horizontal: nombre, barra verde, numero |
 | Caja | Bloque `--superficie` dentro de una Columna, con titulo h3 |
@@ -119,9 +120,10 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Perfil | Abajo de la Barra lateral: avatar, nombre, Salir |
 | Aviso de desconexion | Aviso crit arriba del Panel si el User esta Desconectado, con "Volver a conectar" |
 | Aviso de reconexion | Aviso neutro arriba del Panel, una sola vez despues de reconectar: desde cuando estuvo Desconectado |
+| Aviso de accion | Aviso ok arriba del Panel, una sola vez, despues de una accion (ej: Canal borrado) o si Spotify fallo |
 | Panel | Area derecha: Cabecera + Columnas |
 | Cabecera de Canal | Portada, nombre del Canal y Desvincular, con el tono del Canal |
-| Confirmacion de desvincular | Globo oscuro-rojo bajo la Cabecera con las dos formas de borrar |
+| Confirmacion de desvincular | Globo oscuro-rojo bajo la Cabecera con las dos formas de borrar: Borrar Canal / Borrar Canal y playlist |
 | Columna | Cada una de las tres columnas del Panel; scrollea sola |
 
 ### Vista Canal
@@ -138,18 +140,28 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Interruptor Feats | Dentro de la fila desplegada: sumar invitados |
 | Artistas a mano | Caja con Chips + Buscador de artistas |
 | Columna Reglas | "Donde y como" |
-| Editor de Playlist | Caja: Selector de Target + nombre o lista de playlists propias |
-| Selector de Target | "Nueva" / "Una mia" |
-| Nombre de playlist | Input del nombre (playlist nueva) |
-| Selector de playlist existente | Lista con scroll de playlists propias |
+| Caja Playlist | La Target Playlist del Canal, solo lectura: el Canal vive y muere con ella (ADR 0005) |
+| Aviso de playlist perdida | Aviso warn en la Caja Playlist si la Target ya no esta en la biblioteca del User |
 | Editor de Retencion | Caja "Cuanto guarda": Selector de Retencion + Semanas |
 | Semanas | 12 barritas que dibujan cuanto guarda |
 | Interruptor Guardado | Caja "Saltear lo que ya tengo" |
 | Resumen de Canal | Caja "En una frase": el Canal contado en una oracion |
-| Columna Pistas | Datos de la biblioteca que ayudan a decidir |
+| Columna Whitelist | "Quienes entran": la Whitelist del Canal en Fichas de artista |
+| Columna Pistas | Datos de la biblioteca que ayudan a decidir (pendiente; hoy su lugar lo ocupa la Columna Whitelist) |
 | Quienes mas aparecen | Barras de los artistas del Canal por apariciones en tus playlists |
 | Sugerencias | "Te faltan en este Canal": artistas de otras playlists tuyas con boton Sumar |
 | Cruce con otros Canales | Artistas en comun con cada otro Canal |
+
+### Vista Nuevo Canal
+
+| Nombre | Que es |
+| --- | --- |
+| Cabecera de Nuevo Canal | "Donde va lo nuevo" |
+| Editor de Playlist | Caja: Selector de Target + nombre o lista de playlists propias |
+| Selector de Target | "Nueva" / "Una mia" |
+| Nombre de playlist | Input del nombre (playlist nueva, se crea privada) |
+| Selector de playlist existente | Lista de playlists propias; las que ya son Target dicen "en uso" |
+| Aviso de Nuevo Canal | Aviso crit: tope de 5 Canales, nombre vacio, playlist ajena |
 
 ### Vista Inicio (Tu biblioteca)
 

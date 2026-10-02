@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Figtree:wght@400..700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
+  <!-- morph en vez de reemplazo: los paneles conservan su scroll despues de cada accion -->
+  <script src="https://unpkg.com/idiomorph@0.8.0/dist/idiomorph-ext.min.js" crossorigin="anonymous"></script>
   <style>
     /* tokens de docs/design/style-guide.md */
     :root {
@@ -21,11 +23,14 @@
       --texto-2: #A7A9A4;
       --texto-3: #6E716B;
       --verde: #1ED760;
+      --verde-hondo: #13A049;
       --verde-suave: rgba(30, 215, 96, 0.13);
       --ambar: #F5B642;
       --ambar-suave: rgba(245, 182, 66, 0.14);
       --rojo: #FF6B6B;
       --rojo-suave: rgba(255, 107, 107, 0.14);
+      --scroll: #333333;
+      --scroll-hover: #4A4A4A;
       --display: 'Archivo', 'Arial Narrow', system-ui, sans-serif;
       --body: 'Figtree', 'Segoe UI', system-ui, sans-serif;
       --r-s: 6px; --r-m: 10px; --r-l: 14px;
@@ -35,7 +40,8 @@
     body { margin: 0; background: var(--negro); color: var(--texto); font: 14px/1.45 var(--body); padding: 8px 16px; }
     h1, h2, h3 { font-family: var(--display); margin: 0; line-height: 1.05; text-wrap: balance; }
     p { margin: 0; }
-    button { font: inherit; color: inherit; cursor: pointer; }
+    button, input { font: inherit; color: inherit; }
+    button { cursor: pointer; }
     a { color: inherit; }
     :focus-visible { outline: 2px solid var(--verde); outline-offset: 2px; }
     small { font-size: 12.5px; color: var(--texto-2); }
@@ -67,7 +73,7 @@
     {% block style %}{% endblock %}
   </style>
 </head>
-<body>
+<body {% block body_attrs %}{% endblock %}>
   {% block content %}{% endblock %}
 </body>
 </html>

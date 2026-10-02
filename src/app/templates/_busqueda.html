@@ -1,0 +1,13 @@
+{% import '_macros.html' as ui %}
+{% if query and results %}
+<div class="results">
+  {% for artist in results %}
+  <form method="post" action="/canales/{{ canal.id }}/manual">
+    <input type="hidden" name="artist_id" value="{{ artist.id }}"><input type="hidden" name="name" value="{{ artist.name }}"><input type="hidden" name="open" value="{{ open_ids }}">
+    <button>{{ ui.avatar(artist.name, 26) }}{{ artist.name }}</button>
+  </form>
+  {% endfor %}
+</div>
+{% elif query %}
+<small>No encontre "{{ query }}".</small>
+{% endif %}

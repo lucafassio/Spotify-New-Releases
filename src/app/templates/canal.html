@@ -1,0 +1,120 @@
+{% extends 'shell.html' %}
+{% import '_macros.html' as ui %}
+
+{% block view_style %}
+    .pl { border-radius: var(--r-m); background: var(--superficie); }
+    .pl.on { box-shadow: inset 0 0 0 1px rgba(30, 215, 96, .35); }
+    .pl-row { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 12px; }
+    .pl-row .nm { font-weight: 700; display: block; }
+    .pl.off .pl-row { opacity: .45; }
+    .chev { color: var(--texto-3); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 18px; text-decoration: none; flex: none; transition: transform .15s; }
+    .chev:hover { background: var(--elevada); color: var(--texto); }
+    .chev[aria-expanded="true"] { transform: rotate(90deg); color: var(--verde); }
+    .pl-art { padding: 2px 12px 12px 64px; display: flex; flex-direction: column; gap: 10px; }
+    .weeks { display: flex; gap: 3px; }
+    .weeks i { flex: 1; height: 18px; border-radius: 3px; background: var(--elevada-2); }
+    .weeks i.on { background: var(--verde); }
+    .weeks i.acum { background: repeating-linear-gradient(45deg, var(--verde) 0 4px, var(--verde-hondo) 4px 8px); }
+    .unlink { margin-left: auto; }
+    .unlink > summary { list-style: none; }
+    .unlink > summary::-webkit-details-marker { display: none; }
+    .confirm { position: absolute; right: 20px; top: 70px; z-index: 5; width: min(420px, calc(100% - 40px)); border-radius: var(--r-m); padding: 16px; background: #2A1515; box-shadow: 0 12px 40px rgba(0,0,0,.6); display: flex; flex-direction: column; gap: 10px; }
+{% endblock %}
+
+{% block panel %}
+{% set acumulativa = canal.retencion_n is none or not canal.target_created_by_bot %}
+{% set keep = {'open': open_ids} %}
+<main class="panel main" style="--h:{{ canal.target_playlist_id | hue }}" data-n="Panel">
+  <header class="head" data-n="Cabecera de Canal">{{ ui.cover(canal.target_name or '?', canal.target_playlist_id, 56) }}
+    <div class="grow"><span class="eyebrow">Canal</span><h1 class="ellip">{{ canal.target_name or 'Sin nombre' }}</h1></div>
+    <details class="unlink">
+      <summary class="btn peligro" data-n="Boton Desvincular">Desvincular</summary>
+      <div class="confirm" data-n="Confirmacion de desvincular"><b>Desvincular "{{ canal.target_name }}"</b>
+        <p class="muted">Se borra el Canal. La playlist queda en tu Spotify, salvo que elijas borrarla.</p>
+        <div class="row wrap">
+          <form method="post" action="/canales/{{ canal.id }}/desvincular"><input type="hidden" name="borrar_playlist" value="0"><button class="btn">Borrar Canal</button></form>
+          <form method="post" action="/canales/{{ canal.id }}/desvincular"><input type="hidden" name="borrar_playlist" value="1"><button class="btn peligro">Borrar Canal y playlist</button></form>
+        </div>
+      </div>
+    </details>
+  </header>
+  {% include '_avisos.html' %}
+  <div class="cols">
+    <section class="col" data-n="Columna Fuentes"><header><h2>De quien</h2><small class="nums">{{ whitelist | length }} artistas</small></header>
+      <div class="col-body scroll" id="col-fuentes">
+        <div class="box" data-n="Fuente Follows"><div class="fuente">{{ ui.switch('/canales/' ~ canal.id ~ '/follows', followed is not none, keep, label='Artistas que seguis') }}
+          <div class="grow"><b>Artistas que seguis</b><br>
+            <small>{% if followed %}{{ followed.main_count }} artistas. Si seguis a alguien nuevo, entra solo.{% else %}Los artistas que seguis en Spotify.{% endif %}</small></div></div></div>
+
+        <div class="stack" style="gap:6px" data-n="Lista de Seed Playlists"><div class="eyebrow" style="padding:4px 0">Tus playlists</div>
+          {% for row in rows %}
+          <div class="pl {{ 'on' if row.source }} {{ '' if row.usable else 'off' }}" id="pl-{{ row.id }}" data-n="Fila de Seed Playlist">
+            <div class="pl-row">{{ ui.switch('/canales/' ~ canal.id ~ '/seeds', row.source is not none, {'playlist_id': row.id, 'open': open_ids}, n='Interruptor de playlist', disabled=not row.usable, label=row.name) }}
+              {{ ui.cover(row.name, row.id, 40) }}
+              <span class="grow"><span class="nm ellip">{{ row.name }}</span>
+                <small class="nums">{% if not row.usable %}de {{ row.owner }}, Spotify no deja usarla{% elif row.source %}{{ row.source.main_count }} artistas{% if row.source.include_feats %} + {{ row.source.feat_count }} feats{% endif %}{% else %}no esta en este Canal{% endif %}{% if row.target_of %} &middot; es la playlist de "{{ row.target_of.target_name }}"{% endif %}</small></span>
+              {% if row.usable %}<a class="chev" href="{{ canal_url(canal.id, toggle_open(open_ids, row.id)) }}" aria-expanded="{{ 'true' if row.open else 'false' }}" aria-label="Ver artistas" data-n="Boton ver artistas">&rsaquo;</a>{% endif %}</div>
+            {% if row.open and row.artists is not none %}
+            <div class="pl-art" data-n="Artistas de la playlist">
+              <div class="chips">
+                {% for a in row.artists %}{% if not a.feat or (row.source and row.source.include_feats) %}<span class="achip" data-n="Ficha de artista">{{ ui.avatar(a.name) }}{{ a.name }}</span>{% endif %}{% endfor %}
+              </div>
+              {% set feats = row.artists | selectattr('feat') | list %}
+              {% if row.source %}
+              <div class="row" data-n="Interruptor Feats">{{ ui.switch('/canales/' ~ canal.id ~ '/feats', row.source.include_feats, {'playlist_id': row.id, 'open': open_ids}, label='Sumar feats') }}<span class="grow">Sumar tambien los invitados (feats)</span><small class="nums">+{{ feats | length }}</small></div>
+              {% else %}
+              <small>Prendela para sumar estos artistas al Canal{% if feats %} (y {{ feats | length }} invitados si queres){% endif %}.</small>
+              {% endif %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="box" data-n="Artistas a mano"><b>A mano</b>
+          <div class="chips">
+            {% for a in manual_artists %}
+            <span class="chip" data-n="Chip">{{ ui.avatar(a.name) }}{{ a.name }}<form method="post" action="/canales/{{ canal.id }}/manual/quitar" style="display:contents"><input type="hidden" name="artist_id" value="{{ a.artist_id }}"><input type="hidden" name="open" value="{{ open_ids }}"><button aria-label="Quitar {{ a.name }}">&times;</button></form></span>
+            {% else %}<small>Ninguno todavia.</small>{% endfor %}
+          </div>
+          <input type="search" name="q" placeholder="Buscar un artista para sumar" autocomplete="off" data-n="Buscador de artistas"
+            hx-get="/canales/{{ canal.id }}/buscar" hx-trigger="input changed delay:300ms, search" hx-target="#res" hx-swap="innerHTML" hx-vals='{"open": "{{ open_ids }}"}'>
+          <div id="res"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="col" data-n="Columna Reglas"><header><h2>Donde y como</h2></header>
+      <div class="col-body scroll" id="col-reglas">
+        <div class="box" data-n="Caja Playlist"><h3>Playlist</h3>
+          <div class="row">{{ ui.cover(canal.target_name or '?', canal.target_playlist_id, 40) }}<span class="grow"><b class="ellip" style="display:block">{{ canal.target_name }}</b><small>{{ 'La creo el bot' if canal.target_created_by_bot else 'Una playlist tuya' }}</small></span></div>
+          {% if not target_found %}<div class="aviso warn" data-n="Aviso de playlist perdida">No encontramos esta playlist en tu Spotify. Si la borraste, el Canal se borra en la proxima Entrega.</div>{% endif %}
+        </div>
+        <div class="box" data-n="Editor de Retencion"><h3>Cuanto guarda</h3>
+          {% if canal.target_created_by_bot %}
+          <div class="seg" data-n="Selector de Retencion">
+            {% for n in retencion_options %}<form method="post" action="/canales/{{ canal.id }}/retencion" style="display:contents"><input type="hidden" name="retencion" value="{{ n }}"><input type="hidden" name="open" value="{{ open_ids }}"><button class="{{ 'on' if canal.retencion_n == n }}">{{ n }} sem</button></form>{% endfor %}
+            <form method="post" action="/canales/{{ canal.id }}/retencion" style="display:contents"><input type="hidden" name="retencion" value="acum"><input type="hidden" name="open" value="{{ open_ids }}"><button class="{{ 'on' if canal.retencion_n is none }}">Todo</button></form>
+          </div>
+          {% endif %}
+          <div class="weeks" data-n="Semanas">{% for i in range(12) %}<i class="{{ 'acum' if acumulativa else ('on' if i < canal.retencion_n else '') }}"></i>{% endfor %}</div>
+          <small>{% if not canal.target_created_by_bot %}En una playlist tuya se guarda todo.{% elif acumulativa %}No se borra nada.{% elif canal.retencion_n == 1 %}Cada semana se renueva entera.{% else %}Entra lo nuevo y sale lo de hace {{ canal.retencion_n }} semanas.{% endif %}</small>
+        </div>
+        <div class="box" data-n="Interruptor Guardado"><div class="fuente">{{ ui.switch('/canales/' ~ canal.id ~ '/guardado', canal.guardado_filter, keep, label='Saltear lo que ya tengo') }}<div class="grow"><b>Saltear lo que ya tengo</b><br><small>Si ya esta en tus likes o tus playlists, no se agrega.</small></div></div></div>
+        <div class="box" data-n="Resumen de Canal"><h3>En una frase</h3>
+          <p class="muted" style="font-size:15px;line-height:1.5">Lo nuevo de <b style="color:var(--texto)" class="nums">{{ whitelist | length }} artistas</b> va a <b style="color:var(--texto)">{{ canal.target_name }}</b>, {% if acumulativa %}guarda todo{% elif canal.retencion_n == 1 %}se renueva cada semana{% else %}guarda {{ canal.retencion_n }} semanas{% endif %}{% if canal.guardado_filter %} y saltea lo que ya tenes{% endif %}.</p></div>
+      </div>
+    </section>
+
+    <section class="col" data-n="Columna Whitelist"><header><h2>Quienes entran</h2><small class="nums">{{ whitelist | length }}</small></header>
+      <div class="col-body scroll" id="col-whitelist">
+        <div class="box" data-n="Whitelist"><small>Todos los artistas de los que este Canal busca novedades.</small>
+          <div class="chips">
+            {% for a in whitelist %}<span class="achip" data-n="Ficha de artista">{{ ui.avatar(a.name or '?') }}{{ a.name }}</span>{% else %}<small>Prende una playlist, tus seguidos o suma artistas a mano.</small>{% endfor %}
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends 'shell.html' %}
+{% import '_macros.html' as ui %}
+
+{% block view_style %}
+    .nuevo { padding: 8px; display: grid; grid-template-columns: minmax(0, 560px); justify-content: center; align-content: start; overflow-y: auto; }
+    .opt { display: flex; gap: 10px; align-items: center; padding: 6px 8px; border-radius: var(--r-s); border: 0; background: none; text-align: left; width: 100%; }
+    .opt:hover { background: var(--elevada); }
+    .opt:disabled { opacity: .4; cursor: not-allowed; }
+    .optlist { display: flex; flex-direction: column; gap: 2px; }
+{% endblock %}
+
+{% block panel %}
+<section class="panel main" data-n="Panel">
+  <header class="head" data-n="Cabecera de Nuevo Canal"><div class="grow"><span class="eyebrow">Nuevo Canal</span><h1>Donde va lo nuevo</h1></div></header>
+  {% include '_avisos.html' %}
+  <div class="nuevo scroll">
+    <div class="box" data-n="Editor de Playlist"><h3>Playlist</h3>
+      <small>Cada Canal llena una playlist tuya. La playlist no se cambia despues: para usar otra, crea otro Canal.</small>
+      <div class="seg" data-n="Selector de Target"><a class="{{ 'on' if kind == 'nueva' }}" href="/canales/nuevo?tipo=nueva">Nueva</a><a class="{{ 'on' if kind == 'mia' }}" href="/canales/nuevo?tipo=mia">Una mia</a></div>
+      {% if error %}<div class="aviso crit" data-n="Aviso de Nuevo Canal">{{ error }}</div>{% endif %}
+      {% if kind == 'nueva' %}
+      <form method="post" action="/canales" class="stack">
+        <input type="hidden" name="tipo" value="nueva">
+        <input type="text" name="name" value="Radar de Viernes" maxlength="100" required aria-label="Nombre de la playlist" data-n="Nombre de playlist">
+        <small>La creamos privada en tu Spotify con este nombre. Podes elegir cuantas semanas guarda.</small>
+        <div><button class="btn primario">Crear Canal</button></div>
+      </form>
+      {% else %}
+      <div class="optlist" data-n="Selector de playlist existente">
+        {% for p in own_playlists %}
+        <form method="post" action="/canales">
+          <input type="hidden" name="tipo" value="mia"><input type="hidden" name="playlist_id" value="{{ p.id }}">
+          <button class="opt" {% if p.taken %}disabled{% endif %}>{{ ui.cover(p.name, p.id, 30) }}<span class="grow ellip"><b>{{ p.name }}</b></span><small class="nums">{{ 'en uso' if p.taken else p.total ~ ' canciones' }}</small></button>
+        </form>
+        {% else %}
+        <small>No tenes playlists propias. Crea una nueva.</small>
+        {% endfor %}
+      </div>
+      <small>En una playlist tuya solo se agregan canciones y se guarda todo; nunca se borra nada tuyo.</small>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

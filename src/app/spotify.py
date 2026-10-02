@@ -127,3 +127,138 @@ def get_current_user(access_token):
     response.raise_for_status()
     profile = response.json()
     return profile
+
+
+def call_api(method, access_token, url, **kwargs):
+    '''
+    Llama a la Web API con el token del User y falla si Spotify no responde 2xx.
+        Args:
+            method (str): verbo HTTP
+            access_token (str): access token vigente
+            url (str): path bajo API_URL o url completa (los `next` de la paginacion)
+            **kwargs: params o json para httpx
+        Returns:
+            response (httpx.Response): respuesta exitosa
+    '''
+    if url.startswith('/'):
+        url = f'{API_URL}{url}'
+
+    response = httpx.request(method, url, headers={'Authorization': f'Bearer {access_token}'}, **kwargs)
+    response.raise_for_status()
+    return response
+
+
+def get_pages(access_token, path, params, key=None):
+    '''
+    Recorre una paginacion de Spotify siguiendo `next` hasta el final.
+        Args:
+            access_token (str): access token vigente
+            path (str): path de la primera pagina
+            params (dict): params de la primera pagina; las siguientes los traen en `next`
+            key (str): clave que envuelve al paging object, ej: artists en /me/following
+        Returns:
+            items (list): items de todas las paginas
+    '''
+    items = []
+    url = path
+
+    while url:
+        page = call_api('GET', access_token, url, params=params).json()
+        page = page[key] if key else page
+        items.extend(page['items'])
+        url = page.get('next')
+        params = None
+
+    return items
+
+
+def get_my_playlists(access_token):
+    '''
+    Lista las playlists de la biblioteca del User, propias y ajenas.
+        Args:
+            access_token (str): access token vigente
+        Returns:
+            playlists (list): playlists simplificadas de GET /me/playlists
+    '''
+    playlists = get_pages(access_token, '/me/playlists', {'limit': 50})
+    return playlists
+
+
+def get_playlist_artists(access_token, playlist_id):
+    '''
+    Junta los artistas de una playlist propia o colaborativa: el primero de cada track es principal, el resto feats.
+        Args:
+            access_token (str): access token vigente
+            playlist_id (str): id de Spotify de la playlist
+        Returns:
+            artists (dict): artist_id -> {name, feat}; feat es False si fue principal en algun track
+    '''
+    artists = {}
+
+    for entry in get_pages(access_token, f'/playlists/{playlist_id}/items', {'limit': 50}):
+        # feb 2026 renombro track a item; episodios y archivos locales no aportan artistas
+        track = entry.get('item') or entry.get('track')
+        if not track or track.get('type') != 'track' or track.get('is_local'):
+            continue
+
+        for position, artist in enumerate(track['artists']):
+            if not artist.get('id'):
+                continue
+
+            feat = position > 0
+            known = artists.get(artist['id'])
+            if known is None or (known['feat'] and not feat):
+                artists[artist['id']] = {'name': artist['name'], 'feat': feat}
+
+    return artists
+
+
+def get_followed_artists(access_token):
+    '''
+    Lista los artistas que el User sigue en Spotify.
+        Args:
+            access_token (str): access token vigente
+        Returns:
+            artists (dict): artist_id -> {name, feat}; feat siempre False
+    '''
+    items = get_pages(access_token, '/me/following', {'type': 'artist', 'limit': 50}, key='artists')
+    artists = {artist['id']: {'name': artist['name'], 'feat': False} for artist in items}
+    return artists
+
+
+def search_artists(access_token, query):
+    '''
+    Busca artistas por nombre para la lista manual.
+        Args:
+            access_token (str): access token vigente
+            query (str): texto que escribio el User
+        Returns:
+            artists (list): hasta 10 artistas con id y name (tope de /search desde feb 2026)
+    '''
+    data = call_api('GET', access_token, '/search', params={'q': query, 'type': 'artist', 'limit': 10}).json()
+    artists = [{'id': artist['id'], 'name': artist['name']} for artist in data['artists']['items']]
+    return artists
+
+
+def create_playlist(access_token, name):
+    '''
+    Crea una playlist privada en la biblioteca del User para usarla de Target.
+        Args:
+            access_token (str): access token vigente
+            name (str): nombre que eligio el User
+        Returns:
+            playlist (dict): playlist creada, con id y name
+    '''
+    body = {'name': name, 'public': False, 'description': 'Lo nuevo de tus artistas, cada viernes. Radar de Viernes.'}
+    playlist = call_api('POST', access_token, '/me/playlists', json=body).json()
+    return playlist
+
+
+def remove_playlist(access_token, playlist_id):
+    '''
+    Saca una playlist de la biblioteca del User, que en Spotify es como borrarla (ADR 0005).
+        Args:
+            access_token (str): access token vigente
+            playlist_id (str): id de Spotify de la playlist
+    '''
+    call_api('DELETE', access_token, '/me/library', params={'uris': f'spotify:playlist:{playlist_id}'})

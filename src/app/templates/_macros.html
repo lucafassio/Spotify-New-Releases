@@ -1,0 +1,18 @@
+{# primitivos de docs/design/style-guide.md compartidos por las vistas del dashboard #}
+
+{% macro cover(name, key, size) -%}
+<span class="cover" style="--h:{{ key | hue }};width:{{ size }}px;height:{{ size }}px"><span style="font-size:{{ (size * 0.62) | round | int }}px">{{ name | initial }}</span></span>
+{%- endmacro %}
+
+{% macro avatar(name, size=22) -%}
+<span class="avatar" style="--h:{{ name | hue }};width:{{ size }}px;height:{{ size }}px;font-size:{{ (size * 0.42) | round | int }}px">{{ name | initial }}</span>
+{%- endmacro %}
+
+{# Interruptor: un form por switch para que funcione igual sin JS #}
+{% macro switch(action, on, fields={}, n='Interruptor', disabled=False, label='') -%}
+<form method="post" action="{{ action }}" class="swf">
+  {% for key, value in fields.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+  <input type="hidden" name="on" value="{{ '0' if on else '1' }}">
+  <button class="sw" role="switch" aria-checked="{{ 'true' if on else 'false' }}" aria-label="{{ label }}" data-n="{{ n }}" {% if disabled %}disabled{% endif %}></button>
+</form>
+{%- endmacro %}
