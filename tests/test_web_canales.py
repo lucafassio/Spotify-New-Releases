@@ -183,3 +183,11 @@ def test_spotify_failure_shows_aviso_instead_of_500(logged, db, spotify):
 
     assert response.status_code == 200
     assert 'Spotify no respondio bien' in response.text
+
+
+def test_every_view_carries_the_css_of_all_views(logged):
+    # hx-boost cambia solo el body: si Inicio no trae el CSS de la Vista Canal, al navegar las filas se desarman
+    response = logged['client'].get('/')
+
+    assert '.pl-row' in response.text
+    assert '.optlist' in response.text

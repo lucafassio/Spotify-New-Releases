@@ -1,14 +1,6 @@
 {% extends 'shell.html' %}
 {% import '_macros.html' as ui %}
 
-{% block view_style %}
-    .nuevo { padding: 8px; display: grid; grid-template-columns: minmax(0, 560px); justify-content: center; align-content: start; overflow-y: auto; }
-    .opt { display: flex; gap: 10px; align-items: center; padding: 6px 8px; border-radius: var(--r-s); border: 0; background: none; text-align: left; width: 100%; }
-    .opt:hover { background: var(--elevada); }
-    .opt:disabled { opacity: .4; cursor: not-allowed; }
-    .optlist { display: flex; flex-direction: column; gap: 2px; }
-{% endblock %}
-
 {% block panel %}
 <section class="panel main" data-n="Panel">
   <header class="head" data-n="Cabecera de Nuevo Canal"><div class="grow"><span class="eyebrow">Nuevo Canal</span><h1>Donde va lo nuevo</h1></div></header>

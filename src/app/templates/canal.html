@@ -1,26 +1,6 @@
 {% extends 'shell.html' %}
 {% import '_macros.html' as ui %}
 
-{% block view_style %}
-    .pl { border-radius: var(--r-m); background: var(--superficie); }
-    .pl.on { box-shadow: inset 0 0 0 1px rgba(30, 215, 96, .35); }
-    .pl-row { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 12px; }
-    .pl-row .nm { font-weight: 700; display: block; }
-    .pl.off .pl-row { opacity: .45; }
-    .chev { color: var(--texto-3); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 18px; text-decoration: none; flex: none; transition: transform .15s; }
-    .chev:hover { background: var(--elevada); color: var(--texto); }
-    .chev[aria-expanded="true"] { transform: rotate(90deg); color: var(--verde); }
-    .pl-art { padding: 2px 12px 12px 64px; display: flex; flex-direction: column; gap: 10px; }
-    .weeks { display: flex; gap: 3px; }
-    .weeks i { flex: 1; height: 18px; border-radius: 3px; background: var(--elevada-2); }
-    .weeks i.on { background: var(--verde); }
-    .weeks i.acum { background: repeating-linear-gradient(45deg, var(--verde) 0 4px, var(--verde-hondo) 4px 8px); }
-    .unlink { margin-left: auto; }
-    .unlink > summary { list-style: none; }
-    .unlink > summary::-webkit-details-marker { display: none; }
-    .confirm { position: absolute; right: 20px; top: 70px; z-index: 5; width: min(420px, calc(100% - 40px)); border-radius: var(--r-m); padding: 16px; background: #2A1515; box-shadow: 0 12px 40px rgba(0,0,0,.6); display: flex; flex-direction: column; gap: 10px; }
-{% endblock %}
-
 {% block panel %}
 {% set acumulativa = canal.retencion_n is none or not canal.target_created_by_bot %}
 {% set keep = {'open': open_ids} %}
