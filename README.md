@@ -13,7 +13,14 @@ py -3.13 -m venv .venv
 pip install -e .[dev]
 ```
 
-`.env` en la raiz necesita `DATABASE_URL` (connection string de la branch `dev`, sin pooler) ademas de las credenciales de Spotify.
+`.env` en la raiz necesita:
+
+- `DATABASE_URL`: connection string de la branch `dev`, sin pooler.
+- `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`: Shared App (#9).
+- `FERNET_KEY`: cifra refresh tokens y secrets de Own App. Generarla una vez con `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`; si se pierde, todos los Users tienen que volver a entrar.
+- `SESSION_SECRET`: firma la cookie de sesion. Cualquier string largo al azar, ej: `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+
+En local la web se abre en `http://127.0.0.1:8000`, no en `localhost`: el redirect de Spotify vuelve a `127.0.0.1` y con otro host la cookie de sesion no viaja.
 
 ```cmd
 python -m app.migrate

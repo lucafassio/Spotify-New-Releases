@@ -3,10 +3,18 @@ import uuid
 
 import pytest
 import respx
+from cryptography.fernet import Fernet
 from psycopg import sql
 
 from app.db import connect
 from app.migrate import apply_migrations
+
+# va despues de importar app.config para que load_dotenv ya corrio: en local gana .env, en CI quedan estos valores
+os.environ.setdefault('SESSION_SECRET', 'test-session-secret')
+os.environ.setdefault('FERNET_KEY', Fernet.generate_key().decode())
+os.environ.setdefault('SPOTIFY_CLIENT_ID', 'test-client-id')
+os.environ.setdefault('SPOTIFY_CLIENT_SECRET', 'test-client-secret')
+os.environ.setdefault('SPOTIFY_REDIRECT_URI', 'http://127.0.0.1:8000/callback')
 
 
 @pytest.fixture(scope='session')

@@ -98,8 +98,10 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Marca | Punto verde + "Radar de Viernes" |
 | Frase de login | Titular grande con "tus artistas" subrayado y "viernes" en verde |
 | Boton Conectar | "Conectar con Spotify". El servidor decide que pasa despues |
+| Aviso de login | Aviso crit en la Pantalla de login: conexion cancelada, vencida o Spotify caido |
 | Pantalla de alta | Solo si el User no esta en la lista de registrados |
 | Frase de alta | "Todavia no estas en la lista..." |
+| Aviso de habilitacion | Pantalla de alta: pedirle a Luca que habilite tu email de Spotify |
 | Pasos de Own App | Lista numerada de 5 pasos |
 | Caja de redirect | Redirect URI con boton Copiar |
 | Formulario de claves | Client ID + Client secret |
@@ -115,6 +117,8 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Fila de Canal | Portada, nombre y cantidad de artistas |
 | Boton Nuevo Canal | El + de la Lista de Canales |
 | Perfil | Abajo de la Barra lateral: avatar, nombre, Salir |
+| Aviso de desconexion | Aviso crit arriba del Panel si el User esta Desconectado, con "Volver a conectar" |
+| Aviso de reconexion | Aviso neutro arriba del Panel, una sola vez despues de reconectar: desde cuando estuvo Desconectado |
 | Panel | Area derecha: Cabecera + Columnas |
 | Cabecera de Canal | Portada, nombre del Canal y Desvincular, con el tono del Canal |
 | Confirmacion de desvincular | Globo oscuro-rojo bajo la Cabecera con las dos formas de borrar |

@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+
+{% block style %}
+    .alta { max-width: 760px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 22px; padding: 32px 4px; }
+    .alta .frase { font-size: clamp(30px, 5vw, 56px); }
+    .alta .aviso { font-size: 15px; line-height: 1.5; }
+{% endblock %}
+
+{% block content %}
+<main class="alta" data-n="Pantalla de alta">
+  <div class="marca" data-n="Marca"><i></i>Radar de Viernes</div>
+  <h1 class="frase" data-n="Frase de alta">Todavia no estas en la lista. <em>Pedi que te sumen</em> y volve a entrar.</h1>
+  <div class="aviso" data-n="Aviso de habilitacion">
+    Spotify solo deja entrar a las cuentas que Luca habilita a mano, y hay pocos lugares. Mandale a Luca el <b>email de tu cuenta de Spotify</b>; cuando te avise que te sumo, toca <b>Conectar con Spotify</b> otra vez.
+  </div>
+  <div><a class="btn fantasma" href="/">Volver</a></div>
+</main>
+{% endblock %}

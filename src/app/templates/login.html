@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+
+{% block style %}
+    .login { max-width: 900px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 34px; padding: 24px 0; }
+    .login .sub { font-size: 18px; color: var(--texto-2); max-width: 560px; }
+{% endblock %}
+
+{% block content %}
+<main class="login" data-n="Pantalla de login">
+  <div class="marca" data-n="Marca"><i></i>Radar de Viernes</div>
+  <h1 class="frase" data-n="Frase de login">Lo nuevo de <span class="tok">tus artistas</span>, todos los <em>viernes</em> en tu Spotify.</h1>
+  <p class="sub">Elegis de que artistas y en que playlist. Del resto nos encargamos.</p>
+  {% if error %}
+  <div class="aviso crit" data-n="Aviso de login">{{ error }}</div>
+  {% endif %}
+  <div><a class="btn primario grande" href="/login" data-n="Boton Conectar">Conectar con Spotify</a></div>
+</main>
+{% endblock %}
