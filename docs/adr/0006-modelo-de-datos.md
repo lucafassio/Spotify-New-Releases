@@ -4,6 +4,11 @@ status: accepted
 
 # Modelo de datos: tablas para User, Canal, Whitelist, Run, Lote y Guardado
 
+> **Enmienda 2026-10-01 (ticket #19):** `User` suma `disconnected_at NULL` y
+> `refresh_token_enc` pasa a nullable. Un `invalid_grant` (o `invalid_client` de una Own App)
+> al refrescar marca al User Desconectado: se setea `disconnected_at` y se borra el token
+> muerto. El callback de login limpia ambos.
+
 Las decisiones de #5 y #6 (ADR 0002-0005) ya fijaron la semantica; esto cierra el shape de
 tablas para implementarla. Tokens y credenciales de Own App se guardan cifrados (Fernet) en
 User, nunca las de Shared App (viven en env/GitHub Secrets, ADR 0002). WhitelistArtist
@@ -21,7 +26,7 @@ mismo dia hace upsert sobre la misma fila.
 
 ## Tablas
 
-- `User(id, spotify_user_id, connection_mode, client_id NULL, client_secret_enc NULL, refresh_token_enc, created_at)`
+- `User(id, spotify_user_id, connection_mode, client_id NULL, client_secret_enc NULL, refresh_token_enc NULL, disconnected_at NULL, created_at)`
 - `Canal(id, user_id, target_playlist_id, target_created_by_bot, retencion_n NULL, guardado_filter, created_at)`
 - `ArtistSource(id, canal_id, type[seed_playlist|manual|followed], playlist_id NULL)` — varias
   filas del mismo type por Canal, ej. multiples Seed Playlists

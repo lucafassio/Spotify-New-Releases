@@ -11,6 +11,13 @@ artistas elegidos por cada usuario.
 Persona que conecto su cuenta de Spotify al servicio. Tiene uno o mas Canales.
 _Avoid_: Subscriber, cuenta, perfil
 
+**Desconectado**:
+Estado de un User cuya autorizacion de Spotify murio para siempre: revoco el acceso, o su Own
+App se borro o cambio el secret. No corre Runs y sus Canales y Lotes quedan congelados hasta
+que vuelve a entrar. Que Spotify lo rechace por la allowlist o por Premium no lo desconecta:
+eso se cura solo.
+_Avoid_: revocado, caido, inactivo
+
 **Spotify App**:
 Registro en el dashboard de desarrolladores de Spotify (client id + secret) a traves del cual
 un User autoriza al servicio. No es una cuenta de Spotify.
