@@ -21,7 +21,7 @@ status: accepted
 > **Enmienda 2026-10-05 (ticket #15, ADR 0007):** se va `Checkpoint`: la deteccion pasa a
 > Deezer, que se lee completo cada dia. Entran dos caches globales (no por User):
 > `DeezerArtist(spotify_artist_id, deezer_artist_id NULL, matched_by[isrc|name], checked_at)`
-> y `AlbumLink(deezer_album_id, spotify_album_id NULL, checked_at)`, con NULL = no encontrado
+> y `AlbumLink(deezer_album_id, spotify_album_id NULL, checked_at, artist_ids NULL)`, con NULL = no encontrado
 > todavia. `SourceArtist` suma `isrc NULL` (un Track de la fuente donde figura el artista,
 > para vincularlo por ISRC) y `ArtistSource` suma `snapshot_id NULL` (releer una Seed
 > Playlist solo si cambio). `LoteItem.album_id` sigue siendo el id de Spotify.

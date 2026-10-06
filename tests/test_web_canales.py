@@ -3,7 +3,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from app import canales
+from app import canales, web
 from app.spotify import ACCOUNTS_URL, API_URL
 from app.web import app, get_conn
 from test_web import start_login
@@ -191,3 +191,20 @@ def test_every_view_carries_the_css_of_all_views(logged):
 
     assert '.pl-row' in response.text
     assert '.optlist' in response.text
+
+
+def test_run_now_queues_the_run(logged, db, monkeypatch):
+    queued = []
+    monkeypatch.setattr(web, 'run_in_background', queued.append)
+    canales.create_canal(db, logged['user_id'], 'p1', 'Radar', True)
+
+    home = logged['client'].get('/')
+    response = logged['client'].post('/correr')
+
+    assert 'Buscar novedades ahora' in home.text
+    assert queued == [logged['user_id']]
+    assert 'Estamos buscando novedades' in response.text
+
+
+def test_run_now_button_needs_a_canal(logged):
+    assert 'Buscar novedades ahora' not in logged['client'].get('/').text

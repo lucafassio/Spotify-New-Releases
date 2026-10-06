@@ -1,3 +1,4 @@
+import time
 from urllib.parse import urlencode
 
 import httpx
@@ -31,6 +32,15 @@ class TokenRejected(Exception):
 
 class NotRegistered(Exception):
     pass
+
+
+class QuotaExceeded(Exception):
+    pass
+
+
+# un 429 comun es el rate limit de 30 s y se espera; uno con QUOTA_EXCEEDED es la quota diaria de la cuenta de developer (ADR 0007)
+RATE_LIMIT_RETRIES = 3
+RATE_LIMIT_MAX_WAIT = 30
 
 
 def build_authorize_url(client_id, redirect_uri, state):
@@ -143,9 +153,36 @@ def call_api(method, access_token, url, **kwargs):
     if url.startswith('/'):
         url = f'{API_URL}{url}'
 
-    response = httpx.request(method, url, headers={'Authorization': f'Bearer {access_token}'}, **kwargs)
+    for attempt in range(RATE_LIMIT_RETRIES + 1):
+        response = httpx.request(method, url, headers={'Authorization': f'Bearer {access_token}'}, **kwargs)
+
+        if response.status_code != 429:
+            break
+
+        if is_quota_exceeded(response):
+            raise QuotaExceeded(response.headers.get('retry-after'))
+
+        if attempt < RATE_LIMIT_RETRIES:
+            time.sleep(min(int(response.headers.get('retry-after', 1)), RATE_LIMIT_MAX_WAIT))
+
     response.raise_for_status()
     return response
+
+
+def is_quota_exceeded(response):
+    '''
+    Distingue la quota agotada (no sirve reintentar en el dia) del rate limit comun.
+        Args:
+            response (httpx.Response): respuesta 429 de Spotify
+        Returns:
+            exceeded (bool): True si el body trae reason QUOTA_EXCEEDED
+    '''
+    try:
+        exceeded = response.json().get('error', {}).get('reason') == 'QUOTA_EXCEEDED'
+    except ValueError:
+        exceeded = False
+
+    return exceeded
 
 
 def get_pages(access_token, path, params, key=None):
@@ -191,7 +228,7 @@ def get_playlist_artists(access_token, playlist_id):
             access_token (str): access token vigente
             playlist_id (str): id de Spotify de la playlist
         Returns:
-            artists (dict): artist_id -> {name, feat}; feat es False si fue principal en algun track
+            artists (dict): artist_id -> {name, feat, isrc}; feat es False si fue principal en algun track, isrc es de un track donde figura
     '''
     artists = {}
 
@@ -206,9 +243,14 @@ def get_playlist_artists(access_token, playlist_id):
                 continue
 
             feat = position > 0
+            isrc = track.get('external_ids', {}).get('isrc')
             known = artists.get(artist['id'])
+
             if known is None or (known['feat'] and not feat):
-                artists[artist['id']] = {'name': artist['name'], 'feat': feat}
+                # el ISRC sirve para vincular al artista con Deezer (ADR 0007), cualquier track donde figure alcanza
+                artists[artist['id']] = {'name': artist['name'], 'feat': feat, 'isrc': isrc or (known or {}).get('isrc')}
+            elif known['isrc'] is None:
+                known['isrc'] = isrc
 
     return artists
 
@@ -219,10 +261,10 @@ def get_followed_artists(access_token):
         Args:
             access_token (str): access token vigente
         Returns:
-            artists (dict): artist_id -> {name, feat}; feat siempre False
+            artists (dict): artist_id -> {name, feat, isrc}; feat siempre False y sin isrc
     '''
     items = get_pages(access_token, '/me/following', {'type': 'artist', 'limit': 50}, key='artists')
-    artists = {artist['id']: {'name': artist['name'], 'feat': False} for artist in items}
+    artists = {artist['id']: {'name': artist['name'], 'feat': False, 'isrc': None} for artist in items}
     return artists
 
 
@@ -262,3 +304,38 @@ def remove_playlist(access_token, playlist_id):
             playlist_id (str): id de Spotify de la playlist
     '''
     call_api('DELETE', access_token, '/me/library', params={'uris': f'spotify:playlist:{playlist_id}'})
+
+
+def find_album_by_upc(access_token, upc):
+    '''
+    Busca en Spotify el album de un UPC; es como pasamos un Release de Deezer a Spotify (ADR 0007).
+        Args:
+            access_token (str): access token vigente
+            upc (str): codigo de barras del album
+        Returns:
+            album (dict): album simplificado con id, name y artists, o None si Spotify no lo tiene
+    '''
+    data = call_api('GET', access_token, '/search', params={'q': f'upc:{upc}', 'type': 'album', 'limit': 1}).json()
+    items = data['albums']['items']
+    album = items[0] if items else None
+    return album
+
+
+def get_album(access_token, album_id):
+    '''
+    Lee un album con todos sus tracks en su orden original.
+        Args:
+            access_token (str): access token vigente
+            album_id (str): id de Spotify del album
+        Returns:
+            album (dict): album con artists y tracks (lista de tracks simplificados con uri, artists, disc_number y track_number)
+    '''
+    album = call_api('GET', access_token, f'/albums/{album_id}').json()
+    tracks = album['tracks']['items']
+
+    # GET /albums trae los primeros 50 tracks; un album mas largo sigue paginando
+    if album['tracks'].get('next'):
+        tracks = tracks + get_pages(access_token, album['tracks']['next'], None)
+
+    album['tracks'] = tracks
+    return album

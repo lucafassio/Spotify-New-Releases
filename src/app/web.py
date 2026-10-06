@@ -1,16 +1,17 @@
 import os
 import secrets
 import time
+import traceback
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode
 
 import httpx
-from fastapi import Depends, FastAPI, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import canales, spotify, users
+from app import canales, runs, spotify, users
 from app.config import get_env, get_shared_app
 from app.db import connect
 
@@ -226,6 +227,41 @@ def home(request: Request, conn=Depends(get_conn)):
     context = shell_context(request, conn, user, view='inicio')
     response = templates.TemplateResponse(request, 'dashboard.html', context)
     return response
+
+
+def run_in_background(user_id):
+    '''
+    Corre el Run de un User fuera del request, con su propia conexion: con Whitelists grandes tarda minutos.
+        Args:
+            user_id (int): id interno del User
+    '''
+    with connect() as conn:
+        user = users.get_user(conn, user_id)
+
+        try:
+            runs.run_user(conn, user)
+        except runs.RunBusy:
+            pass
+        except Exception:
+            # la fila Run ya quedo fallida y el Tick lo reintenta; dejamos la traza en el log de Render
+            traceback.print_exc()
+
+
+# FastAPI necesita la anotacion BackgroundTasks para inyectarlo, igual que con Request
+@app.post('/correr')
+def run_now(request: Request, background_tasks: BackgroundTasks, user=Depends(require_user)):
+    '''
+    Boton Buscar novedades: dispara el mismo Run que corre el Tick, en segundo plano.
+        Args:
+            request (Request): request entrante
+            background_tasks (BackgroundTasks): cola de tareas que corren despues de responder
+            user (dict): User de la sesion
+        Returns:
+            response (RedirectResponse): vuelta a Inicio con un Aviso de accion
+    '''
+    background_tasks.add_task(run_in_background, user['id'])
+    request.session['flash'] = 'Estamos buscando novedades de tus artistas. Lo que aparezca entra en la Entrega del viernes.'
+    return RedirectResponse('/', status_code=303)
 
 
 @app.get('/login')

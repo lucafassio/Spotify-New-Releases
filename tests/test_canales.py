@@ -167,9 +167,35 @@ def test_refresh_sources_rereads_spotify(db, spotify):
     canales.add_source(db, canal_id, 'followed', artists(a=False))
     spotify.get(f'{API_URL}/me/following').respond(json={'artists': {'items': [{'id': 'b', 'name': 'B'}], 'next': None}})
 
-    canales.refresh_sources(db, 'token', canal_id)
+    canales.refresh_sources(db, 'token', canal_id, {})
 
     assert whitelist_ids(db, canal_id) == {'b'}
+
+
+def test_refresh_sources_rereads_only_changed_seeds(db, spotify):
+    canal_id = canales.create_canal(db, new_user(db), 'p1', 'Rock', True)
+    canales.add_source(db, canal_id, 'seed_playlist', artists(a=False), 'igual')
+    canales.add_source(db, canal_id, 'seed_playlist', artists(b=False), 'cambio')
+    db.execute("UPDATE artist_sources SET snapshot_id = 's1' WHERE canal_id = %s", (canal_id,))
+    same = spotify.get(f'{API_URL}/playlists/igual/items').respond(json={'items': [], 'next': None})
+    changed = spotify.get(f'{API_URL}/playlists/cambio/items').respond(json={'items': [track('c', external_ids={'isrc': 'X1'})], 'next': None})
+
+    canales.refresh_sources(db, 'token', canal_id, {'igual': 's1', 'cambio': 's2'})
+
+    assert not same.called
+    assert changed.called
+    assert whitelist_ids(db, canal_id) == {'a', 'c'}
+    assert db.execute("SELECT isrc FROM source_artists WHERE artist_id = 'c'").fetchone()[0] == 'X1'
+
+
+def test_refresh_sources_keeps_seed_missing_from_library(db, spotify):
+    canal_id = canales.create_canal(db, new_user(db), 'p1', 'Rock', True)
+    canales.add_source(db, canal_id, 'seed_playlist', artists(a=False), 'borrada')
+
+    canales.refresh_sources(db, 'token', canal_id, {})
+
+    assert whitelist_ids(db, canal_id) == {'a'}
+    assert not spotify.calls
 
 
 def track(*artist_ids, **extra):
@@ -190,11 +216,23 @@ def test_playlist_artists_main_wins_over_feat(spotify):
     found = spotify_artists('s1')
 
     assert found == {
-        'a': {'name': 'A', 'feat': False},
-        'b': {'name': 'B', 'feat': False},
-        'c': {'name': 'C', 'feat': False},
-        'd': {'name': 'D', 'feat': True},
+        'a': {'name': 'A', 'feat': False, 'isrc': None},
+        'b': {'name': 'B', 'feat': False, 'isrc': None},
+        'c': {'name': 'C', 'feat': False, 'isrc': None},
+        'd': {'name': 'D', 'feat': True, 'isrc': None},
     }
+
+
+def test_playlist_artists_keep_an_isrc(spotify):
+    spotify.get(f'{API_URL}/playlists/s1/items').respond(json={
+        'items': [track('a', 'b'), track('b', external_ids={'isrc': 'B1'}), track('a', external_ids={'isrc': 'A2'})],
+        'next': None,
+    })
+
+    found = spotify_artists('s1')
+
+    assert found['a']['isrc'] == 'A2'
+    assert found['b']['isrc'] == 'B1'
 
 
 def spotify_artists(playlist_id):

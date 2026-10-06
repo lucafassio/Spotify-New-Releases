@@ -168,6 +168,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Nombre | Que es |
 | --- | --- |
 | Cabecera de Inicio | "Hola, Luca" |
+| Boton Buscar novedades | Boton secundario en la Cabecera de Inicio: corre el Run en segundo plano y avisa con un Aviso de accion. Solo con Canales y sin desconexion |
 | Numeros de biblioteca | 4 numeros: playlists, artistas, seguidos, Canales |
 | Segui a tus mas escuchados | Top 8 artistas con Seguir y "Seguir a los 8" |
 | Top de biblioteca | Barras de los 14 artistas con mas temas; gris si no estan en ningun Canal |

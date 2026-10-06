@@ -124,7 +124,7 @@ def get_sources(conn, canal_id):
     '''
     sources = conn.cursor(row_factory=dict_row).execute(
         '''
-        SELECT s.id, s.type, s.playlist_id, s.include_feats,
+        SELECT s.id, s.type, s.playlist_id, s.include_feats, s.snapshot_id,
             count(sa.artist_id) FILTER (WHERE NOT sa.feat) AS main_count,
             count(sa.artist_id) FILTER (WHERE sa.feat) AS feat_count
         FROM artist_sources s LEFT JOIN source_artists sa ON sa.artist_source_id = s.id
@@ -176,14 +176,14 @@ def save_source_artists(conn, source_id, artists):
         Args:
             conn (psycopg.Connection): conexion abierta
             source_id (int): id del Artist Source
-            artists (dict): artist_id -> {name, feat}
+            artists (dict): artist_id -> {name, feat, isrc}; isrc puede faltar
     '''
     conn.execute('DELETE FROM source_artists WHERE artist_source_id = %s', (source_id,))
 
     with conn.cursor() as cur:
         cur.executemany(
-            'INSERT INTO source_artists (artist_source_id, artist_id, name, feat) VALUES (%s, %s, %s, %s)',
-            [(source_id, artist_id, artist['name'], artist['feat']) for artist_id, artist in artists.items()],
+            'INSERT INTO source_artists (artist_source_id, artist_id, name, feat, isrc) VALUES (%s, %s, %s, %s, %s)',
+            [(source_id, artist_id, artist['name'], artist['feat'], artist.get('isrc')) for artist_id, artist in artists.items()],
         )
 
 
@@ -321,19 +321,30 @@ def get_whitelist(conn, canal_id):
     return whitelist
 
 
-def refresh_sources(conn, access_token, canal_id):
+def refresh_sources(conn, access_token, canal_id, snapshots):
     '''
-    Vuelve a leer de Spotify las Seed Playlists y los follows del Canal y recalcula la Whitelist.
+    Vuelve a leer de Spotify las Seed Playlists que cambiaron y los follows del Canal, y recalcula la Whitelist.
         Args:
             conn (psycopg.Connection): conexion abierta
             access_token (str): access token del User
             canal_id (int): id del Canal
+            snapshots (dict): playlist_id -> snapshot_id actual, sacado de GET /me/playlists
     '''
     for source in get_sources(conn, canal_id):
-        if source['type'] == 'seed_playlist':
-            save_source_artists(conn, source['id'], spotify.get_playlist_artists(access_token, source['playlist_id']))
-        elif source['type'] == 'followed':
+        if source['type'] == 'followed':
             save_source_artists(conn, source['id'], spotify.get_followed_artists(access_token))
+            continue
+
+        if source['type'] != 'seed_playlist':
+            continue
+
+        # una playlist que ya no esta en la biblioteca deja sus artistas como estaban; una igual no gasta quota (ADR 0007)
+        snapshot_id = snapshots.get(source['playlist_id'])
+        if snapshot_id is None or snapshot_id == source['snapshot_id']:
+            continue
+
+        save_source_artists(conn, source['id'], spotify.get_playlist_artists(access_token, source['playlist_id']))
+        conn.execute('UPDATE artist_sources SET snapshot_id = %s WHERE id = %s', (snapshot_id, source['id']))
 
     recalc_whitelist(conn, canal_id)
 

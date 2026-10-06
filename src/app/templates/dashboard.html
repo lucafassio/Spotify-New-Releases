@@ -2,7 +2,8 @@
 
 {% block panel %}
 <section class="panel main" data-n="Panel">
-  <header class="head" data-n="Cabecera de Inicio"><div class="grow"><span class="eyebrow">Tu biblioteca</span><h1>Hola, {{ display_name }}</h1></div></header>
+  <header class="head" data-n="Cabecera de Inicio"><div class="grow"><span class="eyebrow">Tu biblioteca</span><h1>Hola, {{ display_name }}</h1></div>
+    {% if canales and not disconnected %}<form method="post" action="/correr"><button class="btn" data-n="Boton Buscar novedades">Buscar novedades ahora</button></form>{% endif %}</header>
   {% include '_avisos.html' %}
   <div class="vacio">
     {% if canales %}

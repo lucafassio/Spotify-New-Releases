@@ -4,19 +4,20 @@ import pytest
 from app.db import connect
 from app.migrate import MIGRATIONS_LOCK, apply_migrations
 
-# manual_source_artists paso a source_artists en 0002 (#14)
+# manual_source_artists paso a source_artists en 0002 (#14); checkpoints se fue en 0003 (ADR 0007)
 ADR_0006_TABLES = {
     'users',
     'canales',
     'artist_sources',
     'source_artists',
     'whitelist_artists',
-    'checkpoints',
     'lotes',
     'lote_items',
     'saved_sources',
     'saved_tracks',
     'runs',
+    'deezer_artists',
+    'album_links',
 }
 
 
