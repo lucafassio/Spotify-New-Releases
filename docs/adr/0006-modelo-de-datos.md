@@ -18,6 +18,14 @@ status: accepted
 > cache del nombre de la Target para la Barra lateral, refrescado al leer `GET /me/playlists`.
 > Releer las fuentes de Spotify es `canales.refresh_sources`, pensado para el Run diario.
 
+> **Enmienda 2026-10-05 (ticket #15, ADR 0007):** se va `Checkpoint`: la deteccion pasa a
+> Deezer, que se lee completo cada dia. Entran dos caches globales (no por User):
+> `DeezerArtist(spotify_artist_id, deezer_artist_id NULL, matched_by[isrc|name], checked_at)`
+> y `AlbumLink(deezer_album_id, spotify_album_id NULL, checked_at)`, con NULL = no encontrado
+> todavia. `SourceArtist` suma `isrc NULL` (un Track de la fuente donde figura el artista,
+> para vincularlo por ISRC) y `ArtistSource` suma `snapshot_id NULL` (releer una Seed
+> Playlist solo si cambio). `LoteItem.album_id` sigue siendo el id de Spotify.
+
 Las decisiones de #5 y #6 (ADR 0002-0005) ya fijaron la semantica; esto cierra el shape de
 tablas para implementarla. Tokens y credenciales de Own App se guardan cifrados (Fernet) en
 User, nunca las de Shared App (viven en env/GitHub Secrets, ADR 0002). WhitelistArtist

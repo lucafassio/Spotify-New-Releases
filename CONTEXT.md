@@ -58,9 +58,10 @@ _Avoid_: playlist referencia, playlist origen
 ### Musica
 
 **Release**:
-Album o single de un artista de la Whitelist, o track ajeno donde figura (appears_on), con
-`release_date` de dia dentro de la ventana de un Run y que no figura en ningun Lote anterior
-del Canal. Nunca una compilation. Unidad de deteccion; entra completo o no entra.
+Album, EP o single donde figura un artista de la Whitelist, con fecha de salida dentro de la
+ventana de un Run, que ya esta en Spotify y no figura en ningun Lote anterior del Canal.
+Nunca una compilation. Si el artista es principal entran todos sus Tracks; si solo esta
+invitado en un disco ajeno, entran los Tracks donde figura. Unidad de deteccion.
 _Avoid_: lanzamiento, novedad, drop, visto
 
 **Guardado**:
