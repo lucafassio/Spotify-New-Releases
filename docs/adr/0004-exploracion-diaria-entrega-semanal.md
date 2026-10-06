@@ -4,6 +4,15 @@ status: accepted
 
 # Exploracion diaria, Entrega semanal los viernes
 
+> **Enmienda 2026-10-05 (ticket #16):** la Entrega cuida la quota del viernes, el dia que
+> carga con todo lo que sale el jueves. Si la Target no existe se ve en `GET /me/playlists`,
+> que el Run ya lee; `GET /me/library/contains` solo confirma antes de borrar el Canal. El
+> filtro de Guardado mira solo liked, en vivo con `contains` (40 URIs por llamada); leer las
+> playlists del User no se paga. La Whitelist del momento filtra por `LoteItem.artist_ids`.
+> Lotes cerrados sin entregar se funden en el mas nuevo al arrancar la Entrega. Un Lote donde
+> no entro nada no cuenta para la Retencion. Una Entrega que falla en un Canal deja el Run
+> fallido y el Tick la reintenta; la quota agotada corta todo el Run.
+
 El Run corre todos los dias (ADR 0002) pero la Target Playlist se toca una sola vez por
 semana. Cada Run diario explora y suma los Tracks nuevos al Lote abierto del Canal como
 pendientes; el viernes, despues de explorar, el Lote se cierra y la **Entrega** lo filtra con

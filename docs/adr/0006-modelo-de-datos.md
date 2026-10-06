@@ -26,6 +26,12 @@ status: accepted
 > para vincularlo por ISRC) y `ArtistSource` suma `snapshot_id NULL` (releer una Seed
 > Playlist solo si cambio). `LoteItem.album_id` sigue siendo el id de Spotify.
 
+> **Enmienda 2026-10-05 (ticket #16):** `LoteItem` suma `artist_ids NULL` (principales del
+> disco y artistas del Track) para filtrar con la Whitelist del momento de la Entrega; NULL en
+> filas viejas no se filtra. `Canal` suma `target_total`, tamanio de la Target para los avisos
+> de tope, refrescado al leer `GET /me/playlists` y al entregar. `SavedSource` y `SavedTrack`
+> quedan sin uso: Guardado es solo liked y se consulta en vivo.
+
 Las decisiones de #5 y #6 (ADR 0002-0005) ya fijaron la semantica; esto cierra el shape de
 tablas para implementarla. Tokens y credenciales de Own App se guardan cifrados (Fernet) en
 User, nunca las de Shared App (viven en env/GitHub Secrets, ADR 0002). WhitelistArtist

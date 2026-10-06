@@ -65,8 +65,9 @@ invitado en un disco ajeno, entran los Tracks donde figura. Unidad de deteccion.
 _Avoid_: lanzamiento, novedad, drop, visto
 
 **Guardado**:
-Track que el User tiene como liked song o dentro de una playlist propia o colaborativa que
-no sea ninguna de sus Target Playlists. Un album guardado no hace guardados a sus tracks.
+Track que el User tiene como liked song, consultado en vivo en cada Entrega. Sus playlists no
+cuentan: leerlas gasta la quota del viernes y lo que sale el jueves casi nunca llego a una
+(#16). Un album guardado no hace guardados a sus tracks.
 _Avoid_: likeado, en biblioteca, escuchado
 
 **Track**:
@@ -84,7 +85,7 @@ _Avoid_: playlist destino, output playlist
 **Retencion**:
 Cuantos Lotes entregados conserva la Target Playlist de un Canal: un numero N (quedan los
 ultimos N, con N=1 la playlist se renueva entera cada semana) o Acumulativa (nunca se
-retira). Retira solo Tracks del bot. Solo configurable si la Target Playlist la creo el bot.
+retira). Un Lote donde no entro ningun Track no cuenta. Retira solo Tracks del bot. Solo configurable si la Target Playlist la creo el bot.
 _Avoid_: modo, rolling, limpieza
 
 ### Ejecucion

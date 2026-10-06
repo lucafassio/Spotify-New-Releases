@@ -4,6 +4,16 @@ status: accepted
 
 # Insercion en la Target Playlist: un POST por Track, en orden inverso, en `position: 0`
 
+> **Enmienda 2026-10-05 (ticket #16):** se reemplaza el POST por Track por **un POST por tanda
+> de hasta 100 Tracks**. Todo sale el jueves y la Entrega del viernes tiene que entrar en la
+> quota de un solo dia (ADR 0007): 50 POSTs por User no entran. Prueba real en una playlist
+> vacia: 5 Tracks de un album en un solo POST quedan en el orden del POST tanto en orden
+> personalizado como en "agregados recientemente" ascendente y descendente, en desktop y en
+> celular. Spotify desempata el `added_at` igual por posicion. Playlist del bot: tandas en
+> orden inverso (la ultima primero), todas en `position: 0`. Existente: tandas en orden
+> directo sin `position`; ya no se invierte el album en "agregados recientemente". Cada tanda
+> se marca insertada al recibir 201, asi un reintento sigue con las que faltan.
+
 > **Enmienda 2026-09-23 (ticket #6):** esto aplica a Target Playlists creadas por el bot. En
 > una Target Playlist existente del User se hace append (sin `position`), un POST por Track en
 > orden directo del Lote: manda el orden personalizado, donde el User ya espera lo nuevo al

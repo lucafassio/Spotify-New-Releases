@@ -5,7 +5,7 @@ from app import spotify
 # la quota de la Shared App la comparten todos los Users (ADR 0005)
 MAX_CANALES = 5
 
-CANAL_COLUMNS = 'id, user_id, target_playlist_id, target_name, target_created_by_bot, retencion_n, guardado_filter, created_at'
+CANAL_COLUMNS = 'id, user_id, target_playlist_id, target_name, target_total, target_created_by_bot, retencion_n, guardado_filter, created_at'
 
 
 class CanalError(Exception):
@@ -75,16 +75,20 @@ def create_canal(conn, user_id, target_playlist_id, target_name, created_by_bot)
 
 def sync_target_names(conn, user_id, playlists):
     '''
-    Copia a los Canales el nombre actual de sus Target Playlists, por si el User las renombro en Spotify.
+    Copia a los Canales el nombre y el tamanio actual de sus Target Playlists, por si el User las cambio en Spotify.
         Args:
             conn (psycopg.Connection): conexion abierta
             user_id (int): id interno del User
             playlists (list): playlists de GET /me/playlists
     '''
     for playlist in playlists:
+        total = spotify.get_track_total(playlist)
         conn.execute(
-            'UPDATE canales SET target_name = %s WHERE user_id = %s AND target_playlist_id = %s AND target_name <> %s',
-            (playlist['name'], user_id, playlist['id'], playlist['name']),
+            '''
+            UPDATE canales SET target_name = %s, target_total = %s
+            WHERE user_id = %s AND target_playlist_id = %s AND (target_name <> %s OR target_total <> %s)
+            ''',
+            (playlist['name'], total, user_id, playlist['id'], playlist['name'], total),
         )
 
 

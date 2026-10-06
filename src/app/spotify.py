@@ -42,6 +42,10 @@ class QuotaExceeded(Exception):
 RATE_LIMIT_RETRIES = 3
 RATE_LIMIT_MAX_WAIT = 30
 
+# topes por request de GET /me/library/contains y de POST/DELETE /playlists/{id}/items
+LIBRARY_CHUNK = 40
+ITEMS_CHUNK = 100
+
 
 def build_authorize_url(client_id, redirect_uri, state):
     '''
@@ -339,3 +343,62 @@ def get_album(access_token, album_id):
 
     album['tracks'] = tracks
     return album
+
+
+def get_track_total(playlist):
+    '''
+    Cantidad de canciones de una playlist simplificada; feb 2026 renombro tracks a items.
+        Args:
+            playlist (dict): playlist de GET /me/playlists
+        Returns:
+            total (int): canciones de la playlist
+    '''
+    collection = playlist.get('items') or playlist.get('tracks') or {}
+    total = collection.get('total', 0)
+    return total
+
+
+def check_library(access_token, uris):
+    '''
+    Pregunta que URIs estan en la biblioteca del User: tracks en liked, playlists que sigue o creo.
+        Args:
+            access_token (str): access token vigente
+            uris (list): URIs de Spotify, de a 40 por llamada (tope de GET /me/library/contains)
+        Returns:
+            saved (dict): uri -> True si esta en la biblioteca
+    '''
+    saved = {}
+
+    for start in range(0, len(uris), LIBRARY_CHUNK):
+        chunk = uris[start:start + LIBRARY_CHUNK]
+        flags = call_api('GET', access_token, '/me/library/contains', params={'uris': ','.join(chunk)}).json()
+        saved.update(zip(chunk, flags))
+
+    return saved
+
+
+def add_items(access_token, playlist_id, uris, position=None):
+    '''
+    Agrega hasta 100 Tracks a una playlist en un solo POST; los que entran juntos se ordenan por posicion en todas las vistas.
+        Args:
+            access_token (str): access token vigente
+            playlist_id (str): id de Spotify de la playlist
+            uris (list): hasta 100 URIs en el orden en que deben quedar
+            position (int): donde insertar; None agrega al final
+    '''
+    body = {'uris': uris}
+    if position is not None:
+        body['position'] = position
+
+    call_api('POST', access_token, f'/playlists/{playlist_id}/items', json=body)
+
+
+def remove_items(access_token, playlist_id, uris):
+    '''
+    Saca hasta 100 URIs de una playlist; Spotify borra todas las copias de cada uno.
+        Args:
+            access_token (str): access token vigente
+            playlist_id (str): id de Spotify de la playlist
+            uris (list): hasta 100 URIs
+    '''
+    call_api('DELETE', access_token, f'/playlists/{playlist_id}/items', json={'items': [{'uri': uri} for uri in uris]})

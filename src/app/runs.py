@@ -2,7 +2,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 
-from app import canales, deezer, spotify, users
+from app import canales, deezer, entregas, spotify, users
 
 # Argentina no tiene horario de verano: un offset fijo evita depender de tzdata en Windows
 ART = timezone(timedelta(hours=-3))
@@ -55,7 +55,7 @@ def get_week_start(day):
 
 def run_user(conn, user, today=None):
     '''
-    Corre el Run de un User: explora, llena el Lote abierto de cada Canal y deja el estado en la fila Run.
+    Corre el Run de un User: explora, llena el Lote abierto de cada Canal, entrega lo cerrado y deja el estado en la fila Run.
         Args:
             conn (psycopg.Connection): conexion abierta; el Run commitea por su cuenta
             user (dict): fila de users
@@ -76,7 +76,7 @@ def run_user(conn, user, today=None):
         conn.commit()
 
         try:
-            found = explore(conn, user, today)
+            found, delivered = explore(conn, user, today)
         except Exception:
             # Desconectado, quota agotada o Spotify caido: el Run queda fallido y el Tick lo reintenta (#19, ADR 0007)
             conn.rollback()
@@ -84,7 +84,8 @@ def run_user(conn, user, today=None):
             conn.commit()
             raise
 
-        set_run_status(conn, user['id'], today, 'exitoso')
+        # exitoso solo si todos los Canales cerraron lo que les tocaba; si no, el Tick reintenta la Entrega (ADR 0004)
+        set_run_status(conn, user['id'], today, 'exitoso' if delivered else 'fallido')
         conn.commit()
     finally:
         conn.execute('SELECT pg_advisory_unlock(%s, %s)', (RUN_LOCK, user['id']))
@@ -110,13 +111,13 @@ def set_run_status(conn, user_id, today, status):
 
 def explore(conn, user, today):
     '''
-    Busca los Releases de la ventana en Deezer, los pasa a Spotify y suma sus Tracks al Lote abierto de cada Canal.
+    Busca los Releases de la ventana en Deezer, los pasa a Spotify, suma sus Tracks al Lote abierto de cada Canal y entrega lo cerrado.
         Args:
             conn (psycopg.Connection): conexion abierta
             user (dict): fila de users
             today (date): fecha ART del Run
         Returns:
-            found (int): Tracks nuevos sumados a los Lotes
+            result (tuple): Tracks nuevos sumados a los Lotes y si todas las Entregas pendientes salieron
     '''
     access_token = users.get_access_token(conn, user)
 
@@ -154,7 +155,11 @@ def explore(conn, user, today):
         close_lotes(conn, list(lotes), get_week_start(today))
 
     conn.commit()
-    return found
+
+    # cualquier dia: el viernes entrega el Lote recien cerrado y los otros dias reintenta lo que no salio (ADR 0004)
+    delivered = entregas.deliver_all(conn, access_token, user['id'], playlists)
+    result = (found, delivered)
+    return result
 
 
 def open_lote(conn, canal_id, today):
@@ -464,18 +469,22 @@ def add_lote_items(conn, lote_id, album, tracks, release_date):
     '''
     # el grupo es el duenio del disco, asi un feat en un disco ajeno queda junto al resto de ese disco
     artist_name = album['artists'][0]['name']
+    main_ids = [artist['id'] for artist in album['artists']]
     found = 0
 
     for track in tracks:
         if not track.get('uri'):
             continue
 
+        # la Entrega filtra con la Whitelist del momento: el Track sigue si alguno de estos sigue en ella
+        artist_ids = sorted(set(main_ids) | {artist['id'] for artist in track['artists'] if artist.get('id')})
+
         cursor = conn.execute(
             '''
-            INSERT INTO lote_items (lote_id, track_uri, album_id, artist_name, disc_number, track_number, release_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING
+            INSERT INTO lote_items (lote_id, track_uri, album_id, artist_name, disc_number, track_number, release_date, artist_ids)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING
             ''',
-            (lote_id, track['uri'], album['id'], artist_name, track['disc_number'], track['track_number'], release_date),
+            (lote_id, track['uri'], album['id'], artist_name, track['disc_number'], track['track_number'], release_date, artist_ids),
         )
         found += cursor.rowcount
 

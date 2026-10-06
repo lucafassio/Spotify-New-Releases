@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import canales, runs, spotify, users
+from app import canales, entregas, runs, spotify, users
 from app.config import get_env, get_shared_app
 from app.db import connect
 
@@ -180,6 +180,38 @@ def spotify_failed(request, error):
     return RedirectResponse('/', status_code=303)
 
 
+def get_cap_warnings(user_canales):
+    '''
+    Arma los Avisos de tope de las Target Playlists que pasaron el 90% (ADR 0004).
+        Args:
+            user_canales (list): filas de canales con target_total
+        Returns:
+            warnings (list): dicts con level (warn o crit) y text
+    '''
+    warnings = []
+
+    for canal in user_canales:
+        cap = entregas.BOT_CAP if canal['target_created_by_bot'] else entregas.PLAYLIST_CAP
+        share = canal['target_total'] / cap
+
+        if share < 0.9:
+            continue
+
+        percent = 95 if share >= 0.95 else 90
+        level = 'crit' if percent == 95 else 'warn'
+        cap_text = f'{cap:,}'.replace(',', '.')
+
+        # la del bot se recorta sola; en una del User lo que no entra se pierde
+        if canal['target_created_by_bot']:
+            text = f'{canal["target_name"]} esta al {percent}% de {cap_text} canciones. Desde ahi retiramos sus Lotes mas viejos para hacer lugar.'
+        else:
+            text = f'{canal["target_name"]} esta al {percent}% del tope de {cap_text} canciones de Spotify. Cuando se llene, lo nuevo deja de entrar.'
+
+        warnings.append({'level': level, 'text': text})
+
+    return warnings
+
+
 def shell_context(request, conn, user, **extra):
     '''
     Arma lo que necesita todo el dashboard: Barra lateral, Perfil y Avisos.
@@ -191,12 +223,14 @@ def shell_context(request, conn, user, **extra):
         Returns:
             context (dict): contexto para el template
     '''
+    user_canales = canales.list_canales(conn, user['id'])
     context = {
         'display_name': request.session.get('display_name') or user['spotify_user_id'],
         'disconnected': user['disconnected_at'] is not None,
         'reconnected_since': request.session.pop('reconnected_since', None),
         'flash': request.session.pop('flash', None),
-        'canales': canales.list_canales(conn, user['id']),
+        'canales': user_canales,
+        'cap_warnings': get_cap_warnings(user_canales),
         'max_canales': canales.MAX_CANALES,
         'view': None,
     }
@@ -402,19 +436,6 @@ def require_canal(conn, user, canal_id):
     return canal
 
 
-def track_total(playlist):
-    '''
-    Cantidad de canciones de una playlist simplificada; feb 2026 renombro tracks a items.
-        Args:
-            playlist (dict): playlist de GET /me/playlists
-        Returns:
-            total (int): canciones de la playlist
-    '''
-    collection = playlist.get('items') or playlist.get('tracks') or {}
-    total = collection.get('total', 0)
-    return total
-
-
 @app.get('/canales/nuevo')
 def new_canal(request: Request, user=Depends(require_user), conn=Depends(get_conn)):
     '''
@@ -434,7 +455,7 @@ def new_canal(request: Request, user=Depends(require_user), conn=Depends(get_con
         playlists = spotify.get_my_playlists(get_token(conn, user))
         # una Target tiene que ser propia: el bot solo puede escribir donde es owner
         context['own_playlists'] = [
-            {'id': p['id'], 'name': p['name'], 'total': track_total(p), 'taken': p['id'] in taken}
+            {'id': p['id'], 'name': p['name'], 'total': spotify.get_track_total(p), 'taken': p['id'] in taken}
             for p in playlists if p['owner']['id'] == user['spotify_user_id']
         ]
 

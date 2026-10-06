@@ -80,7 +80,7 @@
           <div class="weeks" data-n="Semanas">{% for i in range(12) %}<i class="{{ 'acum' if acumulativa else ('on' if i < canal.retencion_n else '') }}"></i>{% endfor %}</div>
           <small>{% if not canal.target_created_by_bot %}En una playlist tuya se guarda todo.{% elif acumulativa %}No se borra nada.{% elif canal.retencion_n == 1 %}Cada semana se renueva entera.{% else %}Entra lo nuevo y sale lo de hace {{ canal.retencion_n }} semanas.{% endif %}</small>
         </div>
-        <div class="box" data-n="Interruptor Guardado"><div class="fuente">{{ ui.switch('/canales/' ~ canal.id ~ '/guardado', canal.guardado_filter, keep, label='Saltear lo que ya tengo') }}<div class="grow"><b>Saltear lo que ya tengo</b><br><small>Si ya esta en tus likes o tus playlists, no se agrega.</small></div></div></div>
+        <div class="box" data-n="Interruptor Guardado"><div class="fuente">{{ ui.switch('/canales/' ~ canal.id ~ '/guardado', canal.guardado_filter, keep, label='Saltear lo que ya tengo') }}<div class="grow"><b>Saltear lo que ya tengo</b><br><small>Si ya le diste like a todo el disco, no se agrega.</small></div></div></div>
         <div class="box" data-n="Resumen de Canal"><h3>En una frase</h3>
           <p class="muted" style="font-size:15px;line-height:1.5">Lo nuevo de <b style="color:var(--texto)" class="nums">{{ whitelist | length }} artistas</b> va a <b style="color:var(--texto)">{{ canal.target_name }}</b>, {% if acumulativa %}guarda todo{% elif canal.retencion_n == 1 %}se renueva cada semana{% else %}guarda {{ canal.retencion_n }} semanas{% endif %}{% if canal.guardado_filter %} y saltea lo que ya tenes{% endif %}.</p></div>
       </div>

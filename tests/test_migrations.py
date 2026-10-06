@@ -70,6 +70,7 @@ def test_deleting_canal_cascades_to_lotes(db):
     )
 
     db.execute('DELETE FROM canales WHERE id = %s', (canal_id,))
-    remaining = db.execute('SELECT count(*) FROM lote_items').fetchone()[0]
+    # otros tests commitean Lotes en el mismo schema: se cuenta solo el de este
+    remaining = db.execute('SELECT count(*) FROM lote_items WHERE lote_id = %s', (lote_id,)).fetchone()[0]
 
     assert remaining == 0

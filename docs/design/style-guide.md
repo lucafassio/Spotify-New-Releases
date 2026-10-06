@@ -121,6 +121,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Aviso de desconexion | Aviso crit arriba del Panel si el User esta Desconectado, con "Volver a conectar" |
 | Aviso de reconexion | Aviso neutro arriba del Panel, una sola vez despues de reconectar: desde cuando estuvo Desconectado |
 | Aviso de accion | Aviso ok arriba del Panel, una sola vez, despues de una accion (ej: Canal borrado) o si Spotify fallo |
+| Aviso de tope | Aviso arriba del Panel cuando una Target Playlist pasa el 90% (warn) o el 95% (crit) de su tope: 9.500 en la del bot, 10.000 en una del User |
 | Panel | Area derecha: Cabecera + Columnas |
 | Cabecera de Canal | Portada, nombre del Canal y Desvincular, con el tono del Canal |
 | Confirmacion de desvincular | Globo oscuro-rojo bajo la Cabecera con las dos formas de borrar: Borrar Canal / Borrar Canal y playlist |
