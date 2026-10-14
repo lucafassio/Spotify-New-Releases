@@ -1,18 +1,52 @@
 {% extends 'base.html' %}
 
 {% block style %}
-    .alta { max-width: 760px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 22px; padding: 32px 4px; }
+    .alta { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; padding: 32px 4px; }
     .alta .frase { font-size: clamp(30px, 5vw, 56px); }
     .alta .aviso { font-size: 15px; line-height: 1.5; }
+    .pasos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; counter-reset: p; }
+    .pasos li { counter-increment: p; display: grid; grid-template-columns: 36px 1fr; gap: 12px; padding: 12px; background: var(--superficie); border-radius: var(--r-m); font-size: 15px; }
+    .pasos li::before { content: counter(p); font-family: var(--display); font-weight: 900; font-size: 28px; line-height: 1; color: var(--verde); }
+    .alta .stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    .copybox { display: flex; gap: 8px; align-items: center; background: var(--elevada); border-radius: var(--r-s); padding: 6px 6px 6px 12px; overflow-x: auto; margin-top: 8px; }
+    .copybox code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; white-space: nowrap; flex: 1; }
+    .claves { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .claves input { width: 100%; background: var(--elevada); border: 1px solid transparent; border-radius: var(--r-s); padding: 8px 10px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+    .claves input:hover { border-color: var(--linea); }
+    .claves input:focus { border-color: var(--texto-2); outline: none; }
+    .acciones { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .otra { border-top: 1px solid var(--linea); padding-top: 22px; display: flex; flex-direction: column; gap: 12px; }
+    @media (max-width: 600px) { .claves { grid-template-columns: 1fr; } }
 {% endblock %}
 
 {% block content %}
 <main class="alta" data-n="Pantalla de alta">
   <div class="marca" data-n="Marca"><i></i>Radar de Viernes</div>
-  <h1 class="frase" data-n="Frase de alta">Todavia no estas en la lista. <em>Pedi que te sumen</em> y volve a entrar.</h1>
-  <div class="aviso" data-n="Aviso de habilitacion">
-    Spotify solo deja entrar a las cuentas que Luca habilita a mano, y hay pocos lugares. Mandale a Luca el <b>email de tu cuenta de Spotify</b>; cuando te avise que te sumo, toca <b>Conectar con Spotify</b> otra vez.
+  <h1 class="frase" data-n="Frase de alta">Todavia no estas en la lista. <em>Arma tu propia llave</em> en 5 minutos.</h1>
+  <form method="post" action="/own-app" class="stack">
+    <ol class="pasos" data-n="Pasos de Own App">
+      <li><div>Entra a <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener"><b>developer.spotify.com/dashboard</b></a> con tu cuenta y toca <b>Create app</b>. Nombre y descripcion, lo que quieras.</div></li>
+      <li><div>En <b>Redirect URIs</b> pega exactamente esto:
+        <div class="copybox" data-n="Caja de redirect"><code id="redirect">{{ redirect_uri }}</code><button type="button" class="btn chico" onclick="navigator.clipboard.writeText(document.getElementById('redirect').textContent).then(() => { this.textContent = 'Copiado' })">Copiar</button></div></div></li>
+      <li><div>En <b>Which API/SDKs are you planning to use?</b> marca <b>Web API</b>, acepta los terminos y guarda.</div></li>
+      <li><div>En <b>Settings</b> &rsaquo; <b>User Management</b> agrega tu propio nombre y el email de tu cuenta de Spotify.</div></li>
+      <li><div class="stack"><div>En <b>Settings</b> &rsaquo; <b>Basic Information</b> copia el <b>Client ID</b> y el <b>Client secret</b> (tocando View client secret) y pegalos aca:</div>
+        <div class="claves" data-n="Formulario de claves">
+          <div><label for="client_id"><small>Client ID</small></label><input type="text" id="client_id" name="client_id" value="{{ client_id }}" autocomplete="off" spellcheck="false"></div>
+          <div><label for="client_secret"><small>Client secret</small></label><input type="password" id="client_secret" name="client_secret" autocomplete="off"></div>
+        </div></div></li>
+    </ol>
+    <div class="aviso warn" data-n="Aviso Premium">Necesitas <b>Spotify Premium</b>: Spotify apaga las apps cuyo dueno no lo tiene.</div>
+    {% if error %}
+    <div class="aviso crit" data-n="Aviso de claves">{{ error }}</div>
+    {% endif %}
+    <div class="acciones"><button type="submit" class="btn primario grande" data-n="Boton Conectar">Conectar con Spotify</button><a class="btn fantasma" href="/">Volver</a></div>
+  </form>
+  <div class="otra">
+    <div class="eyebrow">Sin Premium</div>
+    <div class="aviso" data-n="Aviso de habilitacion">
+      Spotify solo deja entrar por nuestra app a las cuentas que Luca habilita a mano, y hay pocos lugares. Mandale a Luca el <b>email de tu cuenta de Spotify</b>; cuando te avise que te sumo, toca <b>Conectar con Spotify</b> en el inicio.
+    </div>
   </div>
-  <div><a class="btn fantasma" href="/">Volver</a></div>
 </main>
 {% endblock %}

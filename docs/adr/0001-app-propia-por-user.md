@@ -4,6 +4,15 @@ status: accepted
 
 # Cada User puede traer su propia Spotify App
 
+> **Enmienda 2026-10-14 (ticket #18):** el login sigue siendo unico (Boton Conectar). Un User
+> de Own App que vuelve se reconoce por su sesion o, sin sesion, por una cookie del navegador
+> (1 anio) con su client id; con eso `/login` autoriza contra su Own App. En otro navegador cae
+> en la Pantalla de alta y vuelve a pegar client id + secret, que reconecta su User (por
+> `spotify_user_id`) sin duplicarlo. Antes de autorizar se prueban las claves con
+> `client_credentials` (no gasta quota de la Web API): si murieron, Pantalla de alta para
+> pegar las nuevas en vez de la pagina de error de Spotify. Entrar por la Shared App pisa el
+> modo y borra las claves de la Own App.
+
 Spotify limita una app en development mode a 5 cuentas autorizadas y solo aprueba
 extended quota a empresas, asi que un unico registro de app nos deja en Luca + 4.
 Decidimos que el servicio soporte dos modos de conexion: la **Shared App** (el registro de

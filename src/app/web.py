@@ -13,6 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import canales, entregas, runs, spotify, users
 from app.config import get_env, get_shared_app
+from app.crypto import decrypt_text, encrypt_text
 from app.db import connect
 
 templates = Jinja2Templates(directory=Path(__file__).parent / 'templates')
@@ -302,20 +303,149 @@ def run_now(request: Request, background_tasks: BackgroundTasks, user=Depends(re
     return RedirectResponse('/', status_code=303)
 
 
-@app.get('/login')
-def login(request: Request):
+ALTA_ERRORS = {
+    'vacio': 'Pega el Client ID y el Client secret para seguir.',
+    'claves': 'Spotify no reconoce ese Client ID con ese Client secret. Copialos de nuevo desde Settings de tu app.',
+    'vencidas': 'Tu app de Spotify dejo de andar: se borro o le cambiaron el secret. Pega las claves nuevas para volver a conectar.',
+    'allowlist': 'Tu app no te dejo entrar. Revisa que tu email de Spotify este en User Management y que tengas Premium.',
+    'spotify': 'Spotify no respondio bien. Proba de nuevo en un rato.',
+}
+
+# cookie del navegador que recuerda la Own App de quien vuelve sin sesion (#18); el client id no es secreto
+OWN_APP_COOKIE = 'own_app'
+OWN_APP_COOKIE_AGE = 60 * 60 * 24 * 365
+
+
+def render_alta(request, error=None, client_id=''):
     '''
-    Manda al User a autorizar la Shared App en Spotify.
+    Arma la Pantalla de alta: Pasos de Own App con su Formulario de claves y el Aviso de habilitacion.
         Args:
             request (Request): request entrante
+            error (str): clave de ALTA_ERRORS, o None
+            client_id (str): Client ID para dejar cargado en el Formulario de claves
+        Returns:
+            response (TemplateResponse): html de la pagina
+    '''
+    context = {
+        'redirect_uri': get_env('SPOTIFY_REDIRECT_URI'),
+        'error': ALTA_ERRORS.get(error),
+        'client_id': client_id,
+    }
+    response = templates.TemplateResponse(request, 'alta.html', context)
+    return response
+
+
+def authorize(request, client_id, own_app=None):
+    '''
+    Manda al User a autorizar una Spotify App y deja en la sesion lo que necesita el callback.
+        Args:
+            request (Request): request entrante
+            client_id (str): client id de la Shared App o de su Own App
+            own_app (dict): client_id y client_secret_enc de su Own App; None para la Shared App
         Returns:
             response (RedirectResponse): redirect a accounts.spotify.com
     '''
-    shared_app = get_shared_app()
     state = secrets.token_urlsafe(16)
     request.session['oauth_state'] = state
-    authorize_url = spotify.build_authorize_url(shared_app['client_id'], shared_app['redirect_uri'], state)
+
+    # el secret viaja cifrado con Fernet: la cookie de sesion esta firmada pero se puede leer
+    if own_app:
+        request.session['own_app'] = own_app
+    else:
+        request.session.pop('own_app', None)
+
+    authorize_url = spotify.build_authorize_url(client_id, get_env('SPOTIFY_REDIRECT_URI'), state)
     response = RedirectResponse(authorize_url, status_code=303)
+    return response
+
+
+def find_returning_own_app(request, conn):
+    '''
+    Reconoce a un User de Own App que vuelve: por su sesion, o si no tiene, por la cookie del navegador.
+        Args:
+            request (Request): request entrante
+            conn (psycopg.Connection): conexion del request
+        Returns:
+            own_app (dict): client_id y client_secret_enc guardados, o None si entra por la Shared App
+    '''
+    user_id = request.session.get('user_id')
+    user = users.get_user(conn, user_id) if user_id else None
+
+    if user and user['connection_mode'] == 'own':
+        own_app = {'client_id': user['client_id'], 'client_secret_enc': user['client_secret_enc']}
+        return own_app
+
+    client_id = request.cookies.get(OWN_APP_COOKIE)
+    own_app = users.find_own_app(conn, client_id) if client_id else None
+    return own_app
+
+
+@app.get('/login')
+def login(request: Request, conn=Depends(get_conn)):
+    '''
+    Boton Conectar: autoriza con la Own App si reconoce al User, si no con la Shared App.
+        Args:
+            request (Request): request entrante
+            conn (psycopg.Connection): conexion del request
+        Returns:
+            response (RedirectResponse): redirect a accounts.spotify.com, o a la Pantalla de alta si su Own App murio
+    '''
+    own_app = find_returning_own_app(request, conn)
+
+    if own_app is None:
+        return authorize(request, get_shared_app()['client_id'])
+
+    # con claves muertas Spotify muestra una pagina de error propia: mejor pedir las nuevas antes (#19)
+    try:
+        valid = spotify.check_client(own_app['client_id'], decrypt_text(own_app['client_secret_enc']))
+    except (httpx.HTTPError, spotify.TokenRejected):
+        return RedirectResponse('/?error=spotify', status_code=303)
+
+    if not valid:
+        return RedirectResponse('/alta?error=vencidas', status_code=303)
+
+    response = authorize(request, own_app['client_id'], own_app)
+    return response
+
+
+@app.get('/alta')
+def alta(request: Request):
+    '''
+    Pantalla de alta: para quien la Shared App no deja entrar o cuya Own App necesita claves nuevas.
+        Args:
+            request (Request): request entrante, con error opcional
+        Returns:
+            response (TemplateResponse): html de la pagina
+    '''
+    response = render_alta(request, request.query_params.get('error'), request.session.pop('alta_client_id', ''))
+    return response
+
+
+@app.post('/own-app')
+def connect_own_app(request: Request, form=Depends(read_form)):
+    '''
+    Formulario de claves: valida el client id + secret de la Own App y manda a autorizarla.
+        Args:
+            request (Request): request entrante
+            form (dict): client_id y client_secret
+        Returns:
+            response (Response): redirect a accounts.spotify.com, o la Pantalla de alta con el error
+    '''
+    client_id = form.get('client_id', '')
+    client_secret = form.get('client_secret', '')
+
+    if not client_id or not client_secret:
+        return render_alta(request, 'vacio', client_id)
+
+    try:
+        valid = spotify.check_client(client_id, client_secret)
+    except (httpx.HTTPError, spotify.TokenRejected):
+        return render_alta(request, 'spotify', client_id)
+
+    if not valid:
+        return render_alta(request, 'claves', client_id)
+
+    response = authorize(request, client_id, {'client_id': client_id, 'client_secret_enc': encrypt_text(client_secret)})
     return response
 
 
@@ -327,10 +457,11 @@ def callback(request: Request, conn=Depends(get_conn)):
             request (Request): request entrante con code y state, o error
             conn (psycopg.Connection): conexion del request
         Returns:
-            response (Response): redirect al dashboard, o la Pantalla de alta si Spotify no lo deja entrar
+            response (RedirectResponse): redirect al dashboard, o a la Pantalla de alta si Spotify no lo deja entrar
     '''
     params = request.query_params
     expected_state = request.session.pop('oauth_state', None)
+    own_app = request.session.pop('own_app', None)
 
     if params.get('error'):
         return RedirectResponse('/?error=cancelado', status_code=303)
@@ -339,20 +470,30 @@ def callback(request: Request, conn=Depends(get_conn)):
     if not expected_state or params.get('state') != expected_state or not params.get('code'):
         return RedirectResponse('/?error=vencido', status_code=303)
 
-    shared_app = get_shared_app()
+    # el code se canjea con el mismo client que lo pidio
+    if own_app:
+        client_id, client_secret = own_app['client_id'], decrypt_text(own_app['client_secret_enc'])
+    else:
+        shared_app = get_shared_app()
+        client_id, client_secret = shared_app['client_id'], shared_app['client_secret']
 
     try:
-        tokens = spotify.exchange_code(shared_app['client_id'], shared_app['client_secret'], params['code'], shared_app['redirect_uri'])
+        tokens = spotify.exchange_code(client_id, client_secret, params['code'], get_env('SPOTIFY_REDIRECT_URI'))
         profile = spotify.get_current_user(tokens['access_token'])
     except spotify.NotRegistered:
-        response = templates.TemplateResponse(request, 'alta.html')
-        return response
+        # en una Own App el 403 es su propio User Management o su Premium, no la lista de Luca
+        if own_app:
+            request.session['alta_client_id'] = client_id
+            return RedirectResponse('/alta?error=allowlist', status_code=303)
+        return RedirectResponse('/alta', status_code=303)
     except spotify.TokenRejected:
         return RedirectResponse('/?error=spotify', status_code=303)
 
-    login = users.save_shared_login(conn, profile['id'], tokens['refresh_token'])
+    login = users.save_login(conn, profile['id'], tokens['refresh_token'], own_app)
     conn.commit()
 
+    # el access token cacheado puede ser del client anterior si cambio de modo
+    token_cache.pop(login['user_id'], None)
     request.session['user_id'] = login['user_id']
     request.session['display_name'] = profile.get('display_name') or profile['id']
 
@@ -361,6 +502,10 @@ def callback(request: Request, conn=Depends(get_conn)):
         request.session['reconnected_since'] = login['disconnected_at'].strftime('%d/%m/%Y')
 
     response = RedirectResponse('/', status_code=303)
+
+    if own_app:
+        response.set_cookie(OWN_APP_COOKIE, client_id, max_age=OWN_APP_COOKIE_AGE, httponly=True, samesite='lax', secure=bool(os.environ.get('RENDER')))
+
     return response
 
 

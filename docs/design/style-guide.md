@@ -98,15 +98,16 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Pantalla de login | Unica puerta de entrada, igual para todos |
 | Marca | Punto verde + "Radar de Viernes" |
 | Frase de login | Titular grande con "tus artistas" subrayado y "viernes" en verde |
-| Boton Conectar | "Conectar con Spotify". El servidor decide que pasa despues |
+| Boton Conectar | "Conectar con Spotify". El servidor decide que pasa despues: su Own App si la reconoce (sesion o cookie del navegador), si no la Shared App. En la Pantalla de alta envia el Formulario de claves |
 | Aviso de login | Aviso crit en la Pantalla de login: conexion cancelada, vencida o Spotify caido |
-| Pantalla de alta | Solo si el User no esta en la lista de registrados |
+| Pantalla de alta | Si la Shared App no lo deja entrar o su Own App murio: Pasos de Own App arriba, Aviso de habilitacion abajo ("Sin Premium") |
 | Frase de alta | "Todavia no estas en la lista..." |
 | Aviso de habilitacion | Pantalla de alta: pedirle a Luca que habilite tu email de Spotify |
 | Pasos de Own App | Lista numerada de 5 pasos |
 | Caja de redirect | Redirect URI con boton Copiar |
 | Formulario de claves | Client ID + Client secret |
 | Aviso Premium | Aviso ambar sobre Premium |
+| Aviso de claves | Aviso crit en la Pantalla de alta: claves vacias o incorrectas, Own App muerta, email fuera de su User Management |
 
 ### Estructura
 

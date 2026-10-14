@@ -24,9 +24,43 @@ def get_user(conn, user_id):
     return user
 
 
+def save_login(conn, spotify_user_id, refresh_token, own_app=None):
+    '''
+    Crea o reconecta al User que acaba de autorizar, con su refresh token y su client cifrados.
+        Args:
+            conn (psycopg.Connection): conexion abierta, el commit queda a cargo del que llama
+            spotify_user_id (str): id de la cuenta de Spotify
+            refresh_token (str): refresh token en claro recien canjeado
+            own_app (dict): client_id y client_secret_enc de su Own App; None si entro por la Shared App
+        Returns:
+            login (dict): user_id y disconnected_at previo (None si no estaba Desconectado)
+    '''
+    previous = conn.execute('SELECT disconnected_at FROM users WHERE spotify_user_id = %s', (spotify_user_id,)).fetchone()
+
+    mode = 'own' if own_app else 'shared'
+    client_id = own_app['client_id'] if own_app else None
+    client_secret_enc = own_app['client_secret_enc'] if own_app else None
+
+    # el refresh token queda atado al client que lo emitio: entrar por el otro modo pisa el modo y las claves
+    user_id = conn.execute(
+        '''
+        INSERT INTO users (spotify_user_id, connection_mode, client_id, client_secret_enc, refresh_token_enc)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (spotify_user_id) DO UPDATE
+        SET connection_mode = EXCLUDED.connection_mode, client_id = EXCLUDED.client_id, client_secret_enc = EXCLUDED.client_secret_enc,
+            refresh_token_enc = EXCLUDED.refresh_token_enc, disconnected_at = NULL
+        RETURNING id
+        ''',
+        (spotify_user_id, mode, client_id, client_secret_enc, encrypt_text(refresh_token)),
+    ).fetchone()[0]
+
+    login = {'user_id': user_id, 'disconnected_at': previous[0] if previous else None}
+    return login
+
+
 def save_shared_login(conn, spotify_user_id, refresh_token):
     '''
-    Crea o reconecta al User que entro por la Shared App, con su refresh token cifrado.
+    Crea o reconecta al User que entro por la Shared App.
         Args:
             conn (psycopg.Connection): conexion abierta, el commit queda a cargo del que llama
             spotify_user_id (str): id de la cuenta de Spotify
@@ -34,22 +68,25 @@ def save_shared_login(conn, spotify_user_id, refresh_token):
         Returns:
             login (dict): user_id y disconnected_at previo (None si no estaba Desconectado)
     '''
-    previous = conn.execute('SELECT disconnected_at FROM users WHERE spotify_user_id = %s', (spotify_user_id,)).fetchone()
-
-    # el refresh token queda atado al client que lo emitio: si antes entraba por Own App pasa a shared
-    user_id = conn.execute(
-        '''
-        INSERT INTO users (spotify_user_id, connection_mode, refresh_token_enc)
-        VALUES (%s, 'shared', %s)
-        ON CONFLICT (spotify_user_id) DO UPDATE
-        SET connection_mode = 'shared', refresh_token_enc = EXCLUDED.refresh_token_enc, disconnected_at = NULL
-        RETURNING id
-        ''',
-        (spotify_user_id, encrypt_text(refresh_token)),
-    ).fetchone()[0]
-
-    login = {'user_id': user_id, 'disconnected_at': previous[0] if previous else None}
+    login = save_login(conn, spotify_user_id, refresh_token)
     return login
+
+
+def find_own_app(conn, client_id):
+    '''
+    Busca las claves guardadas de una Own App por su client id, para reconocer a quien vuelve (#18).
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            client_id (str): client id de la Own App
+        Returns:
+            own_app (dict): client_id y client_secret_enc, o None si ningun User la usa
+    '''
+    row = conn.execute(
+        "SELECT client_id, client_secret_enc FROM users WHERE connection_mode = 'own' AND client_id = %s ORDER BY id LIMIT 1",
+        (client_id,),
+    ).fetchone()
+    own_app = {'client_id': row[0], 'client_secret_enc': row[1]} if row else None
+    return own_app
 
 
 def get_client_credentials(user):

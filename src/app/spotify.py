@@ -127,6 +127,25 @@ def refresh_access_token(client_id, client_secret, refresh_token):
     return tokens
 
 
+def check_client(client_id, client_secret):
+    '''
+    Prueba que un client id y su secret sean validos antes de mandar al User a autorizar; no gasta quota de la Web API.
+        Args:
+            client_id (str): client id de la Spotify App
+            client_secret (str): client secret de la Spotify App
+        Returns:
+            valid (bool): False si Spotify rechaza el client (invalid_client)
+    '''
+    try:
+        request_token(client_id, client_secret, {'grant_type': 'client_credentials'})
+    except TokenRejected as error:
+        if error.error != 'invalid_client':
+            raise
+        return False
+
+    return True
+
+
 def get_current_user(access_token):
     '''
     Lee el perfil del User duenio del token.

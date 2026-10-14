@@ -105,3 +105,39 @@ def test_invalid_client_of_own_app_disconnects_user(db, spotify):
 
     assert route.calls.last.request.headers['Authorization'] == 'Basic b3duLWNpZDpvd24tc2VjcmV0'
     assert users.get_user(db, user_id)['disconnected_at'] is not None
+
+
+def test_own_login_saves_encrypted_client_and_refreshes_with_it(db, spotify):
+    login = users.save_login(db, new_spotify_id(), 'refresh-1', {'client_id': 'own-cid', 'client_secret_enc': encrypt_text('own-secret')})
+    user = users.get_user(db, login['user_id'])
+    route = spotify.post(TOKEN_URL).respond(json={'access_token': 'a'})
+
+    users.get_access_token(db, user)
+
+    assert user['connection_mode'] == 'own'
+    assert user['client_id'] == 'own-cid'
+    assert decrypt_text(user['client_secret_enc']) == 'own-secret'
+    assert route.calls.last.request.headers['Authorization'] == 'Basic b3duLWNpZDpvd24tc2VjcmV0'
+
+
+def test_shared_login_after_own_drops_own_keys(db):
+    spotify_user_id = new_spotify_id()
+    users.save_login(db, spotify_user_id, 'refresh-1', {'client_id': 'own-cid', 'client_secret_enc': encrypt_text('own-secret')})
+
+    login = users.save_shared_login(db, spotify_user_id, 'refresh-2')
+    user = users.get_user(db, login['user_id'])
+
+    assert user['connection_mode'] == 'shared'
+    assert user['client_id'] is None
+    assert user['client_secret_enc'] is None
+
+
+def test_find_own_app_by_client_id(db):
+    client_id = f'cid_{uuid.uuid4().hex[:10]}'
+    users.save_login(db, new_spotify_id(), 'refresh-1', {'client_id': client_id, 'client_secret_enc': encrypt_text('s')})
+
+    own_app = users.find_own_app(db, client_id)
+
+    assert own_app['client_id'] == client_id
+    assert decrypt_text(own_app['client_secret_enc']) == 's'
+    assert users.find_own_app(db, 'nadie') is None

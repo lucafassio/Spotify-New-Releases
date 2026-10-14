@@ -1,3 +1,4 @@
+import base64
 import uuid
 from urllib.parse import parse_qs, urlparse
 
@@ -150,3 +151,117 @@ def test_logout_clears_session(db_client, db, spotify):
     response = db_client.post('/logout')
 
     assert 'Conectar con Spotify' in response.text
+
+
+def basic_auth(client_id, client_secret):
+    '''
+    Header Authorization que manda httpx al token endpoint con un client.
+        Args:
+            client_id (str): client id
+            client_secret (str): client secret
+        Returns:
+            header (str): Basic con id:secret en base64
+    '''
+    return 'Basic ' + base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
+
+
+def connect_own_app(client, spotify, spotify_user_id, client_id):
+    '''
+    Pasa por el Formulario de claves y el callback con una Own App valida.
+        Args:
+            client (TestClient): cliente de la web
+            spotify (respx.Router): router de Spotify
+            spotify_user_id (str): cuenta que autoriza
+            client_id (str): client id de la Own App
+        Returns:
+            route (respx.Route): ruta del token endpoint, para mirar con que client se llamo
+    '''
+    route = spotify.post(TOKEN_URL).respond(json={'access_token': 'a', 'refresh_token': 'r'})
+    spotify.get(f'{API_URL}/me').respond(json={'id': spotify_user_id, 'display_name': 'Amigo'})
+    response = client.post('/own-app', data={'client_id': client_id, 'client_secret': 'own-secret'}, follow_redirects=False)
+    state = parse_qs(urlparse(response.headers['location']).query)['state'][0]
+    client.get(f'/callback?code=c&state={state}')
+    return route
+
+
+def test_alta_shows_own_app_steps_with_redirect(client):
+    response = client.get('/alta')
+
+    assert 'Todavia no estas en la lista' in response.text
+    assert 'http://127.0.0.1:8000/callback' in response.text
+    assert 'name="client_secret"' in response.text
+    assert 'Spotify Premium' in response.text
+
+
+def test_own_app_form_requires_both_keys(client):
+    response = client.post('/own-app', data={'client_id': 'abc', 'client_secret': ''})
+
+    assert 'Pega el Client ID y el Client secret' in response.text
+    assert 'value="abc"' in response.text
+
+
+def test_own_app_form_rejects_wrong_keys(client, spotify):
+    spotify.post(TOKEN_URL).respond(400, json={'error': 'invalid_client'})
+
+    response = client.post('/own-app', data={'client_id': 'abc', 'client_secret': 'mal'})
+
+    assert 'Spotify no reconoce ese Client ID' in response.text
+
+
+def test_own_app_form_authorizes_with_own_client(client, spotify):
+    route = spotify.post(TOKEN_URL).respond(json={'access_token': 'a'})
+
+    response = client.post('/own-app', data={'client_id': 'own-cid', 'client_secret': 'own-secret'}, follow_redirects=False)
+    query = parse_qs(urlparse(response.headers['location']).query)
+
+    assert response.headers['location'].startswith(f'{ACCOUNTS_URL}/authorize?')
+    assert query['client_id'] == ['own-cid']
+    assert query['redirect_uri'] == ['http://127.0.0.1:8000/callback']
+    assert route.calls.last.request.headers['Authorization'] == basic_auth('own-cid', 'own-secret')
+
+
+def test_own_app_callback_saves_user_with_own_client(db_client, db, spotify):
+    spotify_user_id = f'u_{uuid.uuid4().hex[:10]}'
+    client_id = f'cid_{uuid.uuid4().hex[:10]}'
+
+    route = connect_own_app(db_client, spotify, spotify_user_id, client_id)
+    user_id = db.execute('SELECT id FROM users WHERE spotify_user_id = %s', (spotify_user_id,)).fetchone()[0]
+    user = users.get_user(db, user_id)
+
+    assert route.calls.last.request.headers['Authorization'] == basic_auth(client_id, 'own-secret')
+    assert user['connection_mode'] == 'own'
+    assert user['client_id'] == client_id
+    assert user['client_secret_enc'] != 'own-secret'
+    assert db_client.cookies.get('own_app') == client_id
+
+
+def test_own_app_user_returns_by_cookie(db_client, db, spotify):
+    client_id = f'cid_{uuid.uuid4().hex[:10]}'
+    connect_own_app(db_client, spotify, f'u_{uuid.uuid4().hex[:10]}', client_id)
+    db_client.post('/logout')
+
+    response = db_client.get('/login', follow_redirects=False)
+
+    assert parse_qs(urlparse(response.headers['location']).query)['client_id'] == [client_id]
+
+
+def test_own_app_with_dead_keys_asks_for_new_ones(db_client, db, spotify):
+    client_id = f'cid_{uuid.uuid4().hex[:10]}'
+    connect_own_app(db_client, spotify, f'u_{uuid.uuid4().hex[:10]}', client_id)
+    spotify.post(TOKEN_URL).respond(400, json={'error': 'invalid_client'})
+
+    response = db_client.get('/login')
+
+    assert 'Tu app de Spotify dejo de andar' in response.text
+
+
+def test_own_app_outside_its_user_management(client, spotify):
+    spotify.post(TOKEN_URL).respond(json={'access_token': 'a', 'refresh_token': 'r'})
+    spotify.get(f'{API_URL}/me').respond(403)
+    response = client.post('/own-app', data={'client_id': 'own-cid', 'client_secret': 'own-secret'}, follow_redirects=False)
+    state = parse_qs(urlparse(response.headers['location']).query)['state'][0]
+
+    response = client.get(f'/callback?code=c&state={state}')
+
+    assert 'Revisa que tu email de Spotify este en User Management' in response.text
+    assert 'value="own-cid"' in response.text
