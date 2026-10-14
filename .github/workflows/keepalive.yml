@@ -1,0 +1,22 @@
+# Actions apaga los schedule de un repo publico tras 60 dias sin commits (ADR 0002)
+name: Keepalive
+
+on:
+  schedule:
+    - cron: '0 12 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # [skip render] evita que Render redeploye la web por un commit vacio
+      - run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit --allow-empty -m "Keepalive del Tick [skip render]"
+          git push

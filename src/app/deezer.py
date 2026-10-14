@@ -1,3 +1,4 @@
+import threading
 import time
 
 import httpx
@@ -13,6 +14,11 @@ QUOTA_RETRIES = 3
 NO_DATA_CODE = 800
 
 
+# requests hechos por este proceso desde varios hilos; el Tick loguea cuanto gasto cada Run (#17)
+api_calls = 0
+api_calls_lock = threading.Lock()
+
+
 class DeezerError(Exception):
     pass
 
@@ -26,10 +32,15 @@ def call_api(url, params=None):
         Returns:
             data (dict): respuesta de Deezer, o None si no conoce lo que pedimos
     '''
+    global api_calls
+
     if url.startswith('/'):
         url = f'{API_URL}{url}'
 
     for attempt in range(QUOTA_RETRIES + 1):
+        with api_calls_lock:
+            api_calls += 1
+
         response = httpx.get(url, params=params, timeout=20)
         response.raise_for_status()
         data = response.json()

@@ -38,11 +38,20 @@ ruff check .
 
 Web en Render Free (`render.yaml`), DB en la branch `main` de Neon (la `dev` es solo local). Cada push a `main` despliega solo.
 
-Env en Render (y en GitHub Secrets cuando exista el Tick): las mismas variables que `.env`, con estos cambios:
+Env en Render y en GitHub Secrets (el Tick usa todas menos `SESSION_SECRET`): las mismas variables que `.env`, con estos cambios:
 
 - `DATABASE_URL`: connection string de la branch `main`, sin pooler.
 - `SPOTIFY_REDIRECT_URI`: `https://<servicio>.onrender.com/callback`, registrado tambien en el dashboard de la Shared App.
 - `FERNET_KEY` y `SESSION_SECRET`: propias de produccion, distintas de las locales. Perder `FERNET_KEY` obliga a todos los Users a volver a entrar.
+
+### Tick
+
+- `.github/workflows/tick.yml` corre `python -m app.tick` todos los dias a las 02:37 ART, con reintentos 03:37 y 04:37 (ADR 0002). El guard solo corre el Run de un User si no exploro hoy o tiene una Entrega pendiente, asi que los reintentos no gastan quota.
+- A mano: Actions > Tick > Run workflow. En local, `python -m app.tick` corre contra la DB de `.env` y deja el log en `logs/`.
+- Si algun Run falla (Entrega de un Canal, quota de Spotify, error), el job termina en rojo y GitHub manda el mail de workflow fallido.
+- Donde leer: el log del job en Actions, o el artifact `tick-logs-*` (30 dias) con `run.log` para leer, `errors.log` con solo los problemas, `run.jsonl` con un evento por linea y `summary.json` con los totales del Tick (Runs, llamadas a Spotify y Deezer, si se agoto la quota).
+- El repo es publico y sus logs tambien: se loguean ids internos de User y Canal, nunca nombres ni ids de Spotify.
+- `.github/workflows/keepalive.yml` hace un commit vacio el 1 de cada mes para que Actions no apague el schedule (60 dias sin commits); lleva `[skip render]` para no redeployar la web.
 
 ### Subir una version sin romper un Run
 

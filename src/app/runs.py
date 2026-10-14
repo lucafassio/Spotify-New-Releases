@@ -61,7 +61,7 @@ def run_user(conn, user, today=None):
             user (dict): fila de users
             today (date): fecha ART del Run, la pasan los tests
         Returns:
-            found (int): Tracks nuevos sumados a los Lotes
+            report (dict): found con los Tracks nuevos sumados a los Lotes y failures con los Canales cuya Entrega fallo
     '''
     today = today or get_today()
 
@@ -76,7 +76,7 @@ def run_user(conn, user, today=None):
         conn.commit()
 
         try:
-            found, delivered = explore(conn, user, today)
+            report = explore(conn, user, today)
         except Exception:
             # Desconectado, quota agotada o Spotify caido: el Run queda fallido y el Tick lo reintenta (#19, ADR 0007)
             conn.rollback()
@@ -85,13 +85,13 @@ def run_user(conn, user, today=None):
             raise
 
         # exitoso solo si todos los Canales cerraron lo que les tocaba; si no, el Tick reintenta la Entrega (ADR 0004)
-        set_run_status(conn, user['id'], today, 'exitoso' if delivered else 'fallido')
+        set_run_status(conn, user['id'], today, 'fallido' if report['failures'] else 'exitoso')
         conn.commit()
     finally:
         conn.execute('SELECT pg_advisory_unlock(%s, %s)', (RUN_LOCK, user['id']))
         conn.commit()
 
-    return found
+    return report
 
 
 def set_run_status(conn, user_id, today, status):
@@ -117,7 +117,7 @@ def explore(conn, user, today):
             user (dict): fila de users
             today (date): fecha ART del Run
         Returns:
-            result (tuple): Tracks nuevos sumados a los Lotes y si todas las Entregas pendientes salieron
+            report (dict): found con los Tracks nuevos sumados a los Lotes y failures con los Canales cuya Entrega fallo
     '''
     access_token = users.get_access_token(conn, user)
 
@@ -157,9 +157,9 @@ def explore(conn, user, today):
     conn.commit()
 
     # cualquier dia: el viernes entrega el Lote recien cerrado y los otros dias reintenta lo que no salio (ADR 0004)
-    delivered = entregas.deliver_all(conn, access_token, user['id'], playlists)
-    result = (found, delivered)
-    return result
+    failures = entregas.deliver_all(conn, access_token, user['id'], playlists)
+    report = {'found': found, 'failures': failures}
+    return report
 
 
 def open_lote(conn, canal_id, today):

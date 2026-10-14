@@ -159,7 +159,7 @@ def test_run_adds_window_release_as_pending(db, spotify):
     ])
     routes = mock_spotify_album(spotify, single, [a], [track(1, a), track(2, a)])
 
-    found = runs.run_user(db, user, THURSDAY)
+    found = runs.run_user(db, user, THURSDAY)['found']
 
     assert found == 2
     assert lote_items(db, canal_id) == [(a.upper(), 1, date(2026, 9, 28), 'pendiente'), (a.upper(), 2, date(2026, 9, 28), 'pendiente')]
@@ -177,7 +177,7 @@ def test_seen_release_costs_no_spotify_calls(db, spotify):
     routes = mock_spotify_album(spotify, single, [a], [track(1, a)])
 
     runs.run_user(db, user, date(2026, 9, 30))
-    found = runs.run_user(db, user, THURSDAY)
+    found = runs.run_user(db, user, THURSDAY)['found']
 
     assert found == 0
     assert len(lote_items(db, canal_id)) == 1
@@ -238,7 +238,7 @@ def test_artist_in_two_canales_is_explored_once(db, spotify):
     discography = mock_deezer_artist(spotify, 'Artista A', [single])
     routes = mock_spotify_album(spotify, single, [a], [track(1, a)])
 
-    found = runs.run_user(db, user, THURSDAY)
+    found = runs.run_user(db, user, THURSDAY)['found']
 
     assert found == 2
     assert discography.call_count == 1
@@ -254,7 +254,7 @@ def test_clean_twin_is_dropped(db, spotify):
     mock_deezer_artist(spotify, 'Artista A', [explicit, deezer_album('2026-09-28', 'Algun Dia (Clean)')])
     mock_spotify_album(spotify, explicit, [a], [track(1, a)])
 
-    found = runs.run_user(db, user, THURSDAY)
+    found = runs.run_user(db, user, THURSDAY)['found']
 
     assert found == 1
     assert len(lote_items(db, canal_id)) == 1

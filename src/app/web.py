@@ -273,12 +273,16 @@ def run_in_background(user_id):
         user = users.get_user(conn, user_id)
 
         try:
-            runs.run_user(conn, user)
+            report = runs.run_user(conn, user)
         except runs.RunBusy:
-            pass
+            return
         except Exception:
             # la fila Run ya quedo fallida y el Tick lo reintenta; dejamos la traza en el log de Render
             traceback.print_exc()
+            return
+
+        for failure in report['failures']:
+            traceback.print_exception(failure['error'])
 
 
 # FastAPI necesita la anotacion BackgroundTasks para inyectarlo, igual que con Request

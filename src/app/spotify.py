@@ -46,6 +46,9 @@ RATE_LIMIT_MAX_WAIT = 30
 LIBRARY_CHUNK = 40
 ITEMS_CHUNK = 100
 
+# requests a la Web API hechos por este proceso, reintentos incluidos; el Tick loguea cuanto gasto cada Run (#17)
+api_calls = 0
+
 
 def build_authorize_url(client_id, redirect_uri, state):
     '''
@@ -154,10 +157,13 @@ def call_api(method, access_token, url, **kwargs):
         Returns:
             response (httpx.Response): respuesta exitosa
     '''
+    global api_calls
+
     if url.startswith('/'):
         url = f'{API_URL}{url}'
 
     for attempt in range(RATE_LIMIT_RETRIES + 1):
+        api_calls += 1
         response = httpx.request(method, url, headers={'Authorization': f'Bearer {access_token}'}, **kwargs)
 
         if response.status_code != 429:

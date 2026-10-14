@@ -1,0 +1,41 @@
+# Tick diario (ADR 0002, enmienda #5): 02:37 ART mas dos reintentos; el guard hace que los reintentos no gasten si ya salio todo
+name: Tick
+
+on:
+  schedule:
+    - cron: '37 5,6,7 * * *'
+  workflow_dispatch:
+
+# un Tick nunca pisa a otro: el siguiente espera a que termine el anterior
+concurrency:
+  group: tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+      SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+      SPOTIFY_REDIRECT_URI: ${{ secrets.SPOTIFY_REDIRECT_URI }}
+      FERNET_KEY: ${{ secrets.FERNET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - run: pip install .
+      # el codigo de main puede ir adelantado al deploy de Render; migrate toma el mismo lock que la web
+      - run: python -m app.migrate
+      - run: python -m app.tick
+      # el log completo de obslog queda 30 dias como artifact, aunque el Tick falle
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tick-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: logs/runs/
+          retention-days: 30
+          if-no-files-found: ignore

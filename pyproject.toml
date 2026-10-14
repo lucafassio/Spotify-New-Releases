@@ -15,6 +15,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "cryptography>=43",
     "itsdangerous>=2.2",
+    "obslog @ git+https://github.com/lucafassio/obslog.git",
 ]
 
 [project.optional-dependencies]

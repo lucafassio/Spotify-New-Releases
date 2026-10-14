@@ -1,5 +1,3 @@
-import traceback
-
 from app import canales, spotify
 
 # en una Target Playlist creada por el bot se retiran sus Lotes mas viejos hasta quedar en esto (ADR 0004)
@@ -21,10 +19,10 @@ def deliver_all(conn, access_token, user_id, playlists):
             user_id (int): id interno del User
             playlists (list): playlists de GET /me/playlists, leidas al arrancar el Run
         Returns:
-            delivered (bool): True si todos los Canales cerraron lo que les tocaba
+            failures (list): Canales que no cerraron lo que les tocaba, como dicts con canal y error
     '''
     by_id = {playlist['id']: playlist for playlist in playlists}
-    delivered = True
+    failures = []
 
     for canal in canales.list_canales(conn, user_id):
         try:
@@ -32,12 +30,11 @@ def deliver_all(conn, access_token, user_id, playlists):
         except spotify.QuotaExceeded:
             # sin quota no hay nada que reintentar hoy: el Run entero queda fallido (ADR 0007)
             raise
-        except Exception:
+        except Exception as error:
             conn.rollback()
-            traceback.print_exc()
-            delivered = False
+            failures.append({'canal': canal, 'error': error})
 
-    return delivered
+    return failures
 
 
 def deliver(conn, access_token, canal, playlist):
