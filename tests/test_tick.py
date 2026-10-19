@@ -86,6 +86,30 @@ def test_tick_runs_user_and_logs_calls(db, db_schema, spotify, events):
     assert not spotify.calls
 
 
+def test_tick_logs_user_without_canales(db, db_schema, spotify, events):
+    # un amigo que entro y nunca armo un Canal tiene que verse en el log del Tick (#20)
+    user = new_user(db, spotify)
+
+    assert tick.tick_user(user, THURSDAY, db_schema) == 'exitoso'
+    assert by_event(events(), 'no_canales')
+
+
+def test_tick_logs_whitelist_size_per_canal(db, db_schema, spotify, events):
+    # un Canal con la Whitelist vacia no explora nada: el log lo tiene que decir (#20)
+    user = new_user(db, spotify)
+    empty_id = canales.create_canal(db, user['id'], uid('p'), 'Vacio', True)
+    full_id = canales.create_canal(db, user['id'], uid('p'), 'Lleno', True)
+    canales.add_manual_artist(db, full_id, uid('a'), 'Artista A')
+    db.commit()
+    spotify.get(f'{DEEZER_URL}/search/artist').respond(json={'data': []})
+
+    assert tick.tick_user(user, THURSDAY, db_schema) == 'exitoso'
+
+    pending = {entry['canal_id']: entry['artists'] for entry in by_event(events(), 'canal_pending')}
+    assert pending == {empty_id: 0, full_id: 1}
+    assert not by_event(events(), 'no_canales')
+
+
 def test_tick_skips_disconnected_user(db, db_schema, spotify, events):
     user_id = users.save_shared_login(db, uid('u'), 'refresh')['user_id']
     users.mark_disconnected(db, user_id)

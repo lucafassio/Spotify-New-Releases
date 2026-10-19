@@ -156,6 +156,10 @@ def log_canales(conn, canales_before, failures, started_at):
     '''
     errors = {failure['canal']['id']: failure['error'] for failure in failures}
 
+    # un User que entro y nunca armo un Canal corre Runs vacios: sin esta linea el log no lo distingue (#20)
+    if not canales_before:
+        delivery_log.info('Sin Canales: el Run no tiene nada que explorar ni entregar', event='no_canales')
+
     for canal in canales_before:
         fields = {'canal_id': canal['id']}
 
@@ -170,13 +174,14 @@ def log_canales(conn, canales_before, failures, started_at):
                 count(*) FILTER (WHERE l.delivered_at >= %s AND i.status = 'descartado'),
                 count(*) FILTER (WHERE l.status = 'abierto' AND i.status = 'pendiente'),
                 bool_or(l.delivered_at >= %s),
-                (SELECT target_total FROM canales WHERE id = %s)
+                (SELECT target_total FROM canales WHERE id = %s),
+                (SELECT count(*) FROM whitelist_artists WHERE canal_id = %s)
             FROM lotes l LEFT JOIN lote_items i ON i.lote_id = l.id
             WHERE l.canal_id = %s
             ''',
-            (started_at, started_at, started_at, canal['id'], canal['id']),
+            (started_at, started_at, started_at, canal['id'], canal['id'], canal['id']),
         ).fetchone()
-        inserted, discarded, pending, delivered, total = row
+        inserted, discarded, pending, delivered, total, artists = row
 
         if total is None:
             # la Entrega no encontro la Target Playlist y borro el Canal con su Lote (ADR 0005)
@@ -187,7 +192,10 @@ def log_canales(conn, canales_before, failures, started_at):
                 event='entrega_done', inserted=inserted, discarded=discarded, target_total=total, **fields,
             )
         else:
-            delivery_log.info(f'Canal {canal["id"]}: {pending} Tracks esperando la Entrega del viernes', event='canal_pending', pending=pending, **fields)
+            delivery_log.info(
+                f'Canal {canal["id"]} con {artists} artistas: {pending} Tracks esperando la Entrega del viernes',
+                event='canal_pending', pending=pending, artists=artists, **fields,
+            )
 
     conn.commit()
 
