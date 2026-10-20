@@ -73,16 +73,31 @@ def create_canal(conn, user_id, target_playlist_id, target_name, created_by_bot)
     return canal_id
 
 
-def sync_target_names(conn, user_id, playlists):
+def sync_target_names(conn, user_id, playlists, user_canales=None):
     '''
     Copia a los Canales el nombre y el tamanio actual de sus Target Playlists, por si el User las cambio en Spotify.
         Args:
             conn (psycopg.Connection): conexion abierta
             user_id (int): id interno del User
             playlists (list): playlists de GET /me/playlists
+            user_canales (list): Canales ya consultados, o None para leerlos
+        Returns:
+            updated (list): copias de los Canales con nombres y tamanios actualizados
     '''
-    for playlist in playlists:
+    if user_canales is None:
+        user_canales = list_canales(conn, user_id)
+    by_id = {playlist['id']: playlist for playlist in playlists}
+    updated = []
+
+    for canal in user_canales:
+        canal = canal.copy()
+        updated.append(canal)
+        playlist = by_id.get(canal['target_playlist_id'])
+        if playlist is None:
+            continue
         total = spotify.get_track_total(playlist)
+        if canal['target_name'] == playlist['name'] and canal['target_total'] == total:
+            continue
         conn.execute(
             '''
             UPDATE canales SET target_name = %s, target_total = %s
@@ -90,6 +105,9 @@ def sync_target_names(conn, user_id, playlists):
             ''',
             (playlist['name'], total, user_id, playlist['id'], playlist['name'], total),
         )
+        canal.update(target_name=playlist['name'], target_total=total)
+
+    return updated
 
 
 def set_retencion(conn, canal, retencion_n):

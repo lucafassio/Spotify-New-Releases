@@ -2,7 +2,7 @@
 {% if query and results %}
 <div class="results">
   {% for artist in results %}
-  <form method="post" action="/canales/{{ canal.id }}/manual">
+  <form method="post" action="/canales/{{ canal.id }}/manual" hx-post="/canales/{{ canal.id }}/manual" hx-target="#canal-panel" hx-swap="morph:outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="artist_id" value="{{ artist.id }}"><input type="hidden" name="name" value="{{ artist.name }}"><input type="hidden" name="open" value="{{ open_ids }}">
     <button>{{ ui.avatar(artist.name, 26) }}{{ artist.name }}</button>
   </form>

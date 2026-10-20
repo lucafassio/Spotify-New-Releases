@@ -17,6 +17,25 @@ def new_user(db):
     return login['user_id']
 
 
+def test_sync_targets_only_updates_owned_canales_and_keeps_missing(db):
+    user_id = new_user(db)
+    other_id = new_user(db)
+    canal_id = canales.create_canal(db, user_id, 'target', 'Antes', True)
+    missing_id = canales.create_canal(db, user_id, 'missing', 'No cambiar', True)
+    other_canal_id = canales.create_canal(db, other_id, 'target', 'Ajeno', True)
+    library = [{'id': f'irrelevant-{n}', 'name': 'Otra', 'items': {'total': 1}} for n in range(100)]
+    library.append({'id': 'target', 'name': 'Despues', 'items': {'total': 42}})
+    before = canales.list_canales(db, user_id)
+
+    updated = canales.sync_target_names(db, user_id, library, before)
+
+    assert next(row for row in updated if row['id'] == canal_id)['target_name'] == 'Despues'
+    assert next(row for row in before if row['id'] == canal_id)['target_name'] == 'Antes'
+    assert canales.get_canal(db, user_id, canal_id)['target_total'] == 42
+    assert canales.get_canal(db, user_id, missing_id)['target_name'] == 'No cambiar'
+    assert canales.get_canal(db, other_id, other_canal_id)['target_name'] == 'Ajeno'
+
+
 def whitelist_ids(db, canal_id):
     '''
     Ids de artistas de la Whitelist del Canal.

@@ -1,4 +1,10 @@
+import atexit
+import hashlib
 import time
+from collections import OrderedDict
+from contextlib import contextmanager
+from contextvars import ContextVar
+from threading import Lock
 from urllib.parse import urlencode
 
 import httpx
@@ -36,6 +42,91 @@ class NotRegistered(Exception):
 
 class QuotaExceeded(Exception):
     pass
+
+
+class RateLimited(Exception):
+    pass
+
+
+request_deadline = ContextVar('spotify_request_deadline', default=None)
+client_lock = Lock()
+http_client = None
+cooldowns = OrderedDict()
+cooldown_lock = Lock()
+
+
+@contextmanager
+def request_context(interactive=True):
+    '''
+    Limita el tiempo de las lecturas interactivas sin cambiar los reintentos del Tick.
+        Args:
+            interactive (bool): True para requests web, False para Runs
+    '''
+    token = request_deadline.set(time.monotonic() + 8 if interactive else None)
+    try:
+        yield
+    finally:
+        request_deadline.reset(token)
+
+
+def get_http_client():
+    '''
+    Reutiliza las conexiones HTTPS sin guardar autorizacion compartida entre Users.
+        Returns:
+            client (httpx.Client): cliente del proceso
+    '''
+    global http_client
+    with client_lock:
+        if http_client is None or http_client.is_closed:
+            http_client = httpx.Client(timeout=5, limits=httpx.Limits(max_connections=20, max_keepalive_connections=10))
+        return http_client
+
+
+def close_http_client():
+    '''Cierra las conexiones HTTP del proceso.'''
+    global http_client
+    with client_lock:
+        if http_client is not None:
+            http_client.close()
+            http_client = None
+
+
+atexit.register(close_http_client)
+
+
+def clear_cooldowns():
+    '''Descarta los tiempos de espera locales al cerrar la web.'''
+    with cooldown_lock:
+        cooldowns.clear()
+
+
+def request_timeout():
+    '''
+    Calcula el timeout restante de una accion web antes de iniciar otra pagina.
+        Returns:
+            timeout (float): segundos disponibles para la siguiente peticion
+    '''
+    deadline = request_deadline.get()
+    if deadline is None:
+        return 5
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise httpx.TimeoutException('Spotify tardo demasiado. Proba de nuevo.')
+    return min(5, remaining)
+
+
+def retry_after(response):
+    '''
+    Lee los segundos de espera sin dejar que un header invalido rompa la web.
+        Args:
+            response (httpx.Response): respuesta limitada
+        Returns:
+            seconds (int): espera no negativa
+    '''
+    try:
+        return max(1, int(response.headers.get('retry-after', 1)))
+    except (ValueError, TypeError):
+        return 1
 
 
 # un 429 comun es el rate limit de 30 s y se espera; uno con QUOTA_EXCEEDED es la quota diaria de la cuenta de developer (ADR 0007)
@@ -81,7 +172,7 @@ def request_token(client_id, client_secret, form):
         Returns:
             tokens (dict): respuesta de Spotify con access_token y a veces refresh_token
     '''
-    response = httpx.post(f'{ACCOUNTS_URL}/api/token', data=form, auth=(client_id, client_secret))
+    response = get_http_client().post(f'{ACCOUNTS_URL}/api/token', data=form, auth=(client_id, client_secret), timeout=request_timeout())
 
     # 400 y 401 traen un codigo OAuth que decide si el User queda Desconectado (#19); el resto es transitorio
     if response.status_code in (400, 401):
@@ -154,7 +245,7 @@ def get_current_user(access_token):
         Returns:
             profile (dict): respuesta de GET /me (id, display_name, images)
     '''
-    response = httpx.get(f'{API_URL}/me', headers={'Authorization': f'Bearer {access_token}'})
+    response = get_http_client().get(f'{API_URL}/me', headers={'Authorization': f'Bearer {access_token}'}, timeout=request_timeout())
 
     # en development mode Spotify responde 403 a quien no esta en la allowlist de la Spotify App
     if response.status_code == 403:
@@ -181,18 +272,39 @@ def call_api(method, access_token, url, **kwargs):
     if url.startswith('/'):
         url = f'{API_URL}{url}'
 
+    interactive = request_deadline.get() is not None
+    token_key = hashlib.sha256(access_token.encode()).digest()
+    if interactive:
+        with cooldown_lock:
+            cached = cooldowns.get(token_key)
+            if cached and cached[0] > time.monotonic():
+                raise cached[1](max(1, int(cached[0] - time.monotonic())))
+            cooldowns.pop(token_key, None)
+
     for attempt in range(RATE_LIMIT_RETRIES + 1):
         api_calls += 1
-        response = httpx.request(method, url, headers={'Authorization': f'Bearer {access_token}'}, **kwargs)
+        response = get_http_client().request(method, url, headers={'Authorization': f'Bearer {access_token}'}, timeout=request_timeout(), **kwargs)
 
         if response.status_code != 429:
             break
 
-        if is_quota_exceeded(response):
+        quota_exceeded = is_quota_exceeded(response)
+        wait = retry_after(response)
+        if interactive:
+            error_class = QuotaExceeded if quota_exceeded else RateLimited
+            with cooldown_lock:
+                cooldowns[token_key] = (time.monotonic() + wait, error_class)
+                cooldowns.move_to_end(token_key)
+
+                while len(cooldowns) > 128:
+                    cooldowns.popitem(last=False)
+            raise error_class(wait)
+
+        if quota_exceeded:
             raise QuotaExceeded(response.headers.get('retry-after'))
 
         if attempt < RATE_LIMIT_RETRIES:
-            time.sleep(min(int(response.headers.get('retry-after', 1)), RATE_LIMIT_MAX_WAIT))
+            time.sleep(min(wait, RATE_LIMIT_MAX_WAIT))
 
     response.raise_for_status()
     return response

@@ -12,6 +12,12 @@ cambio alcanza con "en la Fila de Seed Playlist, ...". Si un nombre choca con el
 Estado: base definida (#10). Layout base elegido en #7 (ronda 4, dashboard fijo); pulido visual pendiente.
 Vista Canal y Vista Nuevo Canal implementadas en #14 (sin Columna Pistas ni fichas tachables todavia).
 
+Interacciones de Vista Canal: Guardado y Retencion actualizan solo las Reglas y el Resumen de Canal, sin recargar Fuentes ni Whitelist.
+Cambiar Artist Sources actualiza el Panel y el contador de la Barra lateral, conservando las filas desplegadas.
+Boton ver artistas carga su contenido al abrirse; plegar y volver a abrir una fila ya cargada es inmediato.
+Durante un envio se deshabilita su boton; los errores de conexion o limites de Spotify aparecen como Aviso de accion sin borrar la vista.
+La biblioteca puede tardar hasta un minuto en reflejar cambios hechos directamente en Spotify; los previews se reutilizan por snapshot durante hasta cinco minutos.
+
 ## Principios
 
 - **Configurar, no mirar.** Se muestra lo que el User elige o necesita saber para elegir. No

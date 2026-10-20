@@ -1,0 +1,12 @@
+{% import '_macros.html' as ui %}
+<div class="pl-art" data-n="Artistas de la playlist">
+              <div class="chips">
+                {% for a in row.artists %}{% if not a.feat or (row.source and row.source.include_feats) %}<span class="achip" data-n="Ficha de artista">{{ ui.avatar(a.name) }}{{ a.name }}</span>{% endif %}{% endfor %}
+              </div>
+              {% set feats = row.artists | selectattr('feat') | list %}
+              {% if row.source %}
+              <div class="row" data-n="Interruptor Feats">{{ ui.switch('/canales/' ~ canal.id ~ '/feats', row.source.include_feats, {'playlist_id': row.id, 'open': open_ids}, label='Sumar feats') }}<span class="grow">Sumar tambien los invitados (feats)</span><small class="nums">+{{ feats | length }}</small></div>
+              {% else %}
+              <small>Prendela para sumar estos artistas al Canal{% if feats %} (y {{ feats | length }} invitados si queres){% endif %}.</small>
+              {% endif %}
+            </div>

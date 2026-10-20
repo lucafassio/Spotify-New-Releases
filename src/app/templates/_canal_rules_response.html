@@ -1,0 +1,2 @@
+{% include '_canal_settings.html' %}
+<div id="action-notice" hx-swap-oob="innerHTML">{% if flash %}{% set message = flash %}{% include '_action_notice.html' %}{% endif %}</div>

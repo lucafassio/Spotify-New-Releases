@@ -7,5 +7,5 @@
   {% for warning in cap_warnings %}
   <div class="aviso {{ warning.level }}" data-n="Aviso de tope">{{ warning.text }}</div>
   {% endfor %}
-  {% if flash %}<div class="aviso ok" data-n="Aviso de accion">{{ flash }}</div>{% endif %}
+  <div id="action-notice" role="status">{% if flash %}<div class="aviso ok" data-n="Aviso de accion">{{ flash }}</div>{% endif %}</div>
 </div>

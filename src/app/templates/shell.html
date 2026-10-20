@@ -28,6 +28,9 @@
     .head h1 { font-size: 34px; font-weight: 900; font-stretch: 80%; letter-spacing: -0.02em; }
     .avisos { display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 0; }
     .avisos:empty { display: none; }
+    .avisos:not(:has(.aviso)) { display: none; }
+    #action-notice:empty { display: none; }
+    [data-preview][hidden] { display: none; }
     .vacio { display: grid; place-items: center; align-content: center; gap: 14px; padding: 24px; text-align: center; }
 
     .row { display: flex; gap: 10px; align-items: center; }
@@ -125,12 +128,7 @@
     <div class="stack" style="gap:0;min-height:0" data-n="Lista de Canales">
       <div class="side-head"><span class="eyebrow">Canales &middot; {{ canales | length }}/{{ max_canales }}</span>
         {% if canales | length < max_canales %}<a class="btn fantasma" href="/canales/nuevo" data-n="Boton Nuevo Canal" aria-label="Nuevo Canal">+</a>{% else %}<button class="btn fantasma" disabled data-n="Boton Nuevo Canal" aria-label="Nuevo Canal">+</button>{% endif %}</div>
-      <div class="side-list scroll" id="side-list">
-        {% for c in canales %}
-        <a class="nav-row {{ 'on' if view == c.id }}" href="/canales/{{ c.id }}" data-n="Fila de Canal">{{ ui.cover(c.target_name or '?', c.target_playlist_id, 40) }}
-          <span class="grow"><span class="nm ellip">{{ c.target_name or 'Sin nombre' }}</span><small class="nums">{{ c.whitelist_count }} artistas</small></span></a>
-        {% endfor %}
-      </div>
+      {% include '_canal_nav.html' %}
     </div>
     <div class="perfil" data-n="Perfil">
       <span class="avatar">{{ display_name[:2] | upper }}</span>

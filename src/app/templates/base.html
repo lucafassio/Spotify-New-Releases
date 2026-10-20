@@ -10,6 +10,38 @@
   <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
   <!-- morph en vez de reemplazo: los paneles conservan su scroll despues de cada accion -->
   <script src="https://unpkg.com/idiomorph@0.8.0/dist/idiomorph-ext.min.js" crossorigin="anonymous"></script>
+  <script>
+    document.addEventListener('htmx:configRequest', function (event) {
+      const panel = document.getElementById('canal-panel');
+      if (!panel || !event.detail.path.startsWith('/canales/' + panel.dataset.canalId + '/')) return;
+      event.detail.parameters.open = Array.from(panel.querySelectorAll('[data-playlist][aria-expanded="true"]'), link => link.dataset.playlist).join(',');
+    });
+    document.addEventListener('click', function (event) {
+      const link = event.target.closest('[data-preview-url]');
+      if (!link || !window.htmx || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
+      const preview = document.getElementById('preview-' + link.dataset.playlist);
+      if (!preview) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const opening = link.getAttribute('aria-expanded') !== 'true';
+      link.setAttribute('aria-expanded', String(opening));
+      preview.hidden = !opening;
+      if (!opening || preview.querySelector('[data-n="Artistas de la playlist"]') || preview.dataset.loading) return;
+      preview.dataset.loading = 'true';
+      preview.innerHTML = '<small role="status">Cargando artistas...</small>';
+      htmx.ajax('GET', link.dataset.previewUrl, {source: link, target: preview, swap: 'innerHTML'}).finally(function () {
+        delete preview.dataset.loading;
+        if (!preview.querySelector('[data-n="Artistas de la playlist"]')) preview.replaceChildren();
+      }).catch(function () {
+        const notice = document.getElementById('action-notice');
+        if (notice) notice.innerHTML = '<div class="aviso warn">No pudimos cargar los artistas. Proba de nuevo.</div>';
+      });
+    }, true);
+    document.addEventListener('htmx:sendError', function () {
+      const notice = document.getElementById('action-notice');
+      if (notice) notice.innerHTML = '<div class="aviso warn">No pudimos conectar. Proba de nuevo.</div>';
+    });
+  </script>
   <style>
     /* tokens de docs/design/style-guide.md */
     :root {

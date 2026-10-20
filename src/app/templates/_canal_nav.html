@@ -1,0 +1,7 @@
+{% import '_macros.html' as ui %}
+<div class="side-list scroll" id="side-list" {% if oob %}hx-swap-oob="outerHTML"{% endif %}>
+        {% for c in canales %}
+        <a class="nav-row {{ 'on' if view == c.id }}" href="/canales/{{ c.id }}" data-n="Fila de Canal">{{ ui.cover(c.target_name or '?', c.target_playlist_id, 40) }}
+          <span class="grow"><span class="nm ellip">{{ c.target_name or 'Sin nombre' }}</span><small class="nums">{{ c.whitelist_count }} artistas</small></span></a>
+        {% endfor %}
+      </div>
