@@ -1,6 +1,6 @@
 {% import '_macros.html' as ui %}
 <div class="pl-art" data-n="Artistas de la playlist">
-              <div class="chips">
+              <div class="chips filas">
                 {% for a in row.artists %}{% if not a.feat or (row.source and row.source.include_feats) %}<span class="achip" data-n="Ficha de artista">{{ ui.avatar(a.name) }}{{ a.name }}</span>{% endif %}{% endfor %}
               </div>
               {% set feats = row.artists | selectattr('feat') | list %}

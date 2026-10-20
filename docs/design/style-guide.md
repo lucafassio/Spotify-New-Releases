@@ -91,7 +91,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Selector | Fila de pildoras donde una queda blanca |
 | Aviso | Caja de texto con fondo: neutra, ok, warn, crit |
 | Chip | Pildora con avatar y x para quitar (artistas a mano) |
-| Ficha de artista | Pildora con avatar; verde si esta incluido, gris si es un feat que no entra. Tachada si se saco (pendiente, no implementado) |
+| Ficha de artista | Pildora con avatar (fila a lo ancho en Artistas de la playlist); verde si esta incluido, gris si es un feat que no entra. Tachada si se saco (pendiente, no implementado) |
 | Portada | Cuadrado con degradado e inicial |
 | Barras | Grafico de barras horizontal: nombre, barra verde, numero |
 | Caja | Bloque `--superficie` dentro de una Columna, con titulo h3 |
@@ -144,7 +144,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Fila de Seed Playlist | Interruptor, portada, nombre, cantidad de artistas y flecha |
 | Interruptor de playlist | Prende o apaga la playlist como fuente del Canal |
 | Boton ver artistas | Flecha que despliega la fila |
-| Artistas de la playlist | Fichas de artista desplegadas; tocar una la saca del Canal |
+| Artistas de la playlist | Fichas de artista desplegadas en filas, una abajo de la otra; tocar una la saca del Canal |
 | Interruptor Feats | Dentro de la fila desplegada: sumar invitados |
 | Artistas a mano | Caja con Chips + Buscador de artistas |
 | Columna Reglas | "Donde y como" |

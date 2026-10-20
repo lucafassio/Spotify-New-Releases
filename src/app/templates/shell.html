@@ -65,6 +65,8 @@
     .chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .achip { display: inline-flex; align-items: center; gap: 7px; border-radius: 99px; padding: 3px 10px 3px 3px; font-size: 13px; font-weight: 600; background: var(--verde-suave); color: var(--texto); }
     .achip.feat { background: var(--elevada); color: var(--texto-2); }
+    .chips.filas { flex-direction: column; flex-wrap: nowrap; gap: 4px; }
+    .chips.filas .achip { display: flex; border-radius: 8px; padding: 5px 10px 5px 5px; }
     .chip { display: inline-flex; align-items: center; gap: 7px; background: var(--elevada); border-radius: 99px; padding: 3px 4px 3px 3px; font-size: 13px; font-weight: 600; }
     .chip button { border: 0; background: none; color: var(--texto-3); padding: 0 7px; font-size: 15px; line-height: 1; }
     .chip button:hover { color: var(--texto); }
