@@ -4,7 +4,8 @@ name: Despierta
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    # minutos corridos de :00 porque Actions atrasa o saltea los schedule en la hora en punto; respaldo del pinger externo
+    - cron: '4,14,24,34,44,54 * * * *'
   workflow_dispatch:
 
 # un ping no espera a otro: si hay uno en curso, el nuevo sobra
