@@ -1,0 +1,25 @@
+# Render Free duerme la web tras 15 min sin visitas y la primera tarda ~50 s: un ping cada 10 min la mantiene prendida
+# Un servicio prendido todo el mes usa ~744 de las 750 horas gratis del workspace de Render
+name: Despierta
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+# un ping no espera a otro: si hay uno en curso, el nuevo sobra
+concurrency:
+  group: despierta
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # APP_URL es una variable del repo (Settings > Secrets and variables > Actions > Variables), ej: https://<servicio>.onrender.com
+      - env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then echo "::warning::Falta la variable APP_URL"; exit 0; fi
+          curl -fsS --retry 3 --retry-delay 10 --max-time 90 "$APP_URL/health"

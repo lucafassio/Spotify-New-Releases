@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlencode
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from psycopg.errors import LockNotAvailable, QueryCanceled
 from psycopg_pool import PoolTimeout, TooManyRequests
@@ -68,12 +69,26 @@ async def lifespan(app):
 
 # cookie firmada, no cifrada: guardamos solo el id del User y datos de pantalla, nunca tokens
 app = FastAPI(lifespan=lifespan)
+# manifest e iconos: la web se instala como app desde Chrome, Edge o el celular
+app.mount('/static', StaticFiles(directory=Path(__file__).parent / 'static'), name='static')
+SESSION_AGE = 60 * 60 * 24 * 30
+
+
+# va antes de SessionMiddleware para quedar adentro y ver request.session
+@app.middleware('http')
+async def renew_session(request: Request, call_next):
+    '''Renueva la cookie en cada visita: la sesion vence solo tras 30 dias sin entrar.'''
+    if request.session.get('user_id'):
+        request.session['seen'] = int(time.time())
+    return await call_next(request)
+
+
 # Render define RENDER en el entorno: alla todo es https y la cookie no viaja por http
 app.add_middleware(
     SessionMiddleware,
     secret_key=get_env('SESSION_SECRET'),
     same_site='lax',
-    max_age=60 * 60 * 24 * 30,
+    max_age=SESSION_AGE,
     https_only=bool(os.environ.get('RENDER')),
 )
 

@@ -30,7 +30,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-app = ["templates/*.html", "migrations/*.sql"]
+app = ["templates/*.html", "migrations/*.sql", "static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

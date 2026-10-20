@@ -38,6 +38,10 @@ ruff check .
 
 Web en Render Free (`render.yaml`), DB en la branch `main` de Neon (la `dev` es solo local). Cada push a `main` despliega solo.
 
+- URL: https://spotify-new-releases-u6yp.onrender.com. Se instala como app (manifest e iconos en `src/app/static/`): en Chrome o Edge, icono de instalar en la barra de direcciones; en el celular, "Agregar a pantalla de inicio".
+- `.github/workflows/despierta.yml` pega a `/health` cada 10 min para que Render Free no duerma la web (la primera visita tardaria ~50 s). Lee la URL de la variable de repo `APP_URL`. Un servicio prendido todo el mes usa ~744 de las 750 horas gratis del workspace: no sumar otro servicio Free en Render.
+- La sesion dura 30 dias desde la ultima visita: cada request de un User logueado renueva la cookie.
+
 Env en Render y en GitHub Secrets (el Tick usa todas menos `SESSION_SECRET`): las mismas variables que `.env`, con estos cambios:
 
 - `DATABASE_URL`: connection string de la branch `main`, sin pooler.
