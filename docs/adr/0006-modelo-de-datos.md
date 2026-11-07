@@ -32,6 +32,13 @@ status: accepted
 > de tope, refrescado al leer `GET /me/playlists` y al entregar. `SavedSource` y `SavedTrack`
 > quedan sin uso: Guardado es solo liked y se consulta en vivo.
 
+> **Enmienda 2026-11-06 (ADR 0008):** `ArtistSource.type` pierde `followed`. Entran
+> `PlaylistCopy(user_id, playlist_id, name, owner_id, collaborative, snapshot_id, total,
+> artists_snapshot_id NULL, last_track_uri NULL)`, con NULL = nunca abierta, y
+> `PlaylistCopyArtist(user_id, playlist_id, artist_id, name, feat, isrc)`. Son por User y se
+> escriben al listar la biblioteca y al abrir una playlist. `SourceArtist` sigue igual: la Lista
+> manual y cada Seed Playlist guardan ahi sus artistas, aparte de la copia.
+
 Las decisiones de #5 y #6 (ADR 0002-0005) ya fijaron la semantica; esto cierra el shape de
 tablas para implementarla. Tokens y credenciales de Own App se guardan cifrados (Fernet) en
 User, nunca las de Shared App (viven en env/GitHub Secrets, ADR 0002). WhitelistArtist

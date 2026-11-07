@@ -26,8 +26,8 @@ Playlist van 1 a 1: el Canal nace con su playlist y muere con ella.
   cantidad de Canales. El tope de 5 existe porque la quota de la Shared App la comparten todos.
 - Los Canales fallan por separado: la Entrega de uno no bloquea a otro.
 - Una playlist es Target de un solo Canal a la vez. Ninguna Target Playlist cuenta como
-  Guardado. Una Target puede ser Seed Playlist; si el User lo hace, la Whitelist crece sola y
-  es su decision.
+  Guardado. La Target de otro Canal puede ser Seed Playlist; si el User lo hace, la Whitelist
+  crece sola y es su decision. La de su propio Canal no (ADR 0008).
 - Desvincular un Canal lo borra y ofrece eliminar tambien la playlist (`DELETE /me/library`,
   suma el scope `user-library-modify`). Si el User borra la playlist en Spotify, el Canal se
   borra en la proxima Entrega.

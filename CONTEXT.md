@@ -43,17 +43,31 @@ _Avoid_: feed, radar, suscripcion
 
 **Whitelist**:
 Conjunto final de artistas que vigila un Canal. Es la union de sus Artist Sources.
-_Avoid_: Watchlist, tracked artists, artistas seguidos (ambiguo con la fuente de Spotify)
+_Avoid_: Watchlist, tracked artists, artistas seguidos
 
 **Artist Source**:
-Origen del que se derivan artistas para una Whitelist: una playlist, una lista manual,
-o los artistas que el User sigue en Spotify.
+Origen del que se derivan artistas para una Whitelist: la lista manual o una Seed Playlist. Un
+Canal usa una cosa o la otra, nunca ambas: con al menos una Seed Playlist prendida manda Seed, y
+sin ninguna manda la lista manual. Cada Canal decide por su cuenta. Los artistas que el User
+sigue en Spotify no cuentan.
 _Avoid_: fuente, input
 
+**Lista manual**:
+Artistas que el User eligio uno por uno para un Canal, desde sus playlists o buscandolos. No
+depende de las playlists: un artista elegido queda aunque salga de la playlist de donde vino.
+Se conserva mientras el Canal usa Seed Playlists y vuelve al apagarlas.
+_Avoid_: seleccion, favoritos
+
 **Seed Playlist**:
-Playlist propia o colaborativa del User usada como Artist Source. Aporta sus artistas
-principales (y opcionalmente los feats). Playlists ajenas o editoriales no sirven.
+Playlist propia o colaborativa del User usada como Artist Source. Aporta todos sus artistas
+principales (y opcionalmente los feats) y los sigue cuando la playlist cambia. Playlists ajenas
+o editoriales no sirven, y tampoco la Target Playlist del mismo Canal.
 _Avoid_: playlist referencia, playlist origen
+
+**Copia de playlist**:
+Lo ultimo que el servicio leyo de los artistas de una playlist del User. Se muestra al instante
+mientras se confirma que sigue vigente. Una playlist nunca abierta no tiene copia.
+_Avoid_: cache, preview, state old
 
 ### Musica
 

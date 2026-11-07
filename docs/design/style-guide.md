@@ -5,18 +5,19 @@ cada elemento por el mismo nombre. Se actualiza en el mismo commit que cambia la
 
 Como usar los nombres: en el prototipo, el boton **Nombres** de la barra de abajo (o la tecla
 `N`) marca cada elemento. Al pasar el mouse muestra el nombre y la ruta completa, por ejemplo
-`Panel > Columna Fuentes > Fila de Seed Playlist`. Un click copia el nombre. Para pedir un
-cambio alcanza con "en la Fila de Seed Playlist, ...". Si un nombre choca con el glosario de
+`Panel > Columna izquierda > Fila de playlist`. Un click copia el nombre. Para pedir un
+cambio alcanza con "en la Fila de playlist, ...". Si un nombre choca con el glosario de
 `CONTEXT.md`, gana el glosario y se renombra aca.
 
 Estado: base definida (#10). Layout base elegido en #7 (ronda 4, dashboard fijo); pulido visual pendiente.
-Vista Canal y Vista Nuevo Canal implementadas en #14 (sin Columna Pistas ni fichas tachables todavia).
+Vista Canal y Vista Ajustes describen el rediseno de ADR 0008, pendiente de implementar: hasta entonces el codigo muestra las tres columnas viejas.
 
-Interacciones de Vista Canal: Guardado y Retencion actualizan solo las Reglas y el Resumen de Canal, sin recargar Fuentes ni Whitelist.
-Cambiar Artist Sources actualiza el Panel y el contador de la Barra lateral, conservando las filas desplegadas.
-Boton ver artistas carga su contenido al abrirse; plegar y volver a abrir una fila ya cargada es inmediato.
+Interacciones de Vista Canal: la Flecha de artista mueve sin llamar a Spotify y actualiza las dos columnas y el contador de la Barra lateral.
+Una sola Fila de playlist abierta a la vez: abrir otra pliega la anterior. La fila muestra su copia guardada al instante y la actualiza por detras.
+La lista nunca se reordena mientras se lee: lo que llega durante la lectura va al Bloque de nuevos, al fondo.
+Con Seed Playlists prendidas, la Columna izquierda queda apagada y no responde.
+Un cambio hecho directamente en Spotify puede tardar uno o dos minutos en verse (ADR 0008).
 Durante un envio se deshabilita su boton; los errores de conexion o limites de Spotify aparecen como Aviso de accion sin borrar la vista.
-La biblioteca puede tardar hasta un minuto en reflejar cambios hechos directamente en Spotify; los previews se reutilizan por snapshot durante hasta cinco minutos.
 
 ## Principios
 
@@ -53,7 +54,7 @@ Verde solo para accion principal, seleccion y datos que cuentan. Nada de verde d
 | `--verde-tinta` | `#04210F` | Texto secundario sobre verde |
 | `--scroll` / `--scroll-hover` | `#333333` / `#4A4A4A` | Barra de scroll de los paneles |
 | `--lima` | `#C6F432` | Solo herramientas del prototipo (capa de Nombres) |
-| `--ambar` | `#F5B642` | Aviso: tope al 90%, Premium, 0 artistas seguidos |
+| `--ambar` | `#F5B642` | Aviso: tope al 90%, Premium |
 | `--rojo` | `#FF6B6B` | Error, tope al 95%, Desvincular |
 
 **Portadas generadas**: cada Canal y cada playlist tiene un tono (`--h`, 0-360) que arma un
@@ -90,8 +91,8 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Interruptor | Switch on/off (verde prendido) |
 | Selector | Fila de pildoras donde una queda blanca |
 | Aviso | Caja de texto con fondo: neutra, ok, warn, crit |
-| Chip | Pildora con avatar y x para quitar (artistas a mano) |
-| Ficha de artista | Pildora con avatar (fila a lo ancho en Artistas de la playlist); verde si esta incluido, gris si es un feat que no entra. Tachada si se saco (pendiente, no implementado) |
+| Fila de artista | Avatar, nombre y Flecha de artista, a lo ancho de la columna |
+| Flecha de artista | A la derecha en la Columna izquierda (suma a la Lista manual), a la izquierda en la Columna derecha (saca de la Lista manual) |
 | Portada | Cuadrado con degradado e inicial |
 | Barras | Grafico de barras horizontal: nombre, barra verde, numero |
 | Caja | Bloque `--superficie` dentro de una Columna, con titulo h3 |
@@ -130,35 +131,39 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Aviso de accion | Aviso ok arriba del Panel, una sola vez, despues de una accion (ej: Canal borrado) o si Spotify fallo |
 | Aviso de tope | Aviso arriba del Panel cuando una Target Playlist pasa el 90% (warn) o el 95% (crit) de su tope: 9.500 en la del bot, 10.000 en una del User |
 | Panel | Area derecha: Cabecera + Columnas |
-| Cabecera de Canal | Portada, nombre del Canal y Desvincular, con el tono del Canal |
+| Cabecera de Canal | Portada, nombre del Canal, Boton Ajustes y Desvincular, con el tono del Canal |
+| Boton Ajustes | Abre la Vista Ajustes en lugar de las dos columnas; desde ahi vuelve a la Vista Canal |
 | Confirmacion de desvincular | Globo oscuro-rojo bajo la Cabecera con las dos formas de borrar: Borrar Canal / Borrar Canal y playlist |
-| Columna | Cada una de las tres columnas del Panel; scrollea sola |
+| Columna | Cada una de las dos columnas del Panel; scrollea sola |
 
 ### Vista Canal
 
 | Nombre | Que es |
 | --- | --- |
-| Columna Fuentes | "De quien": todo lo que arma la Whitelist |
-| Fuente Follows | Caja con el Interruptor de artistas seguidos |
-| Lista de Seed Playlists | Todas las playlists del User, una fila cada una |
-| Fila de Seed Playlist | Interruptor, portada, nombre, cantidad de artistas y flecha |
-| Interruptor de playlist | Prende o apaga la playlist como fuente del Canal |
-| Boton ver artistas | Flecha que despliega la fila |
-| Artistas de la playlist | Fichas de artista desplegadas en filas, una abajo de la otra; tocar una la saca del Canal |
-| Interruptor Feats | Dentro de la fila desplegada: sumar invitados |
-| Artistas a mano | Caja con Chips + Buscador de artistas |
-| Columna Reglas | "Donde y como" |
+| Columna izquierda | Las playlists del User y sus artistas. Apagada y sin respuesta si el Canal usa Seed Playlists |
+| Fila de playlist | Portada, nombre, cantidad de canciones y Boton ver artistas |
+| Fila no disponible | Fila gris al fondo de la lista, dice "No disponible" y no se despliega: playlists ajenas no colaborativas y la Target de este Canal |
+| Boton ver artistas | Flecha que despliega la fila; una sola abierta a la vez |
+| Indicador de lectura | Arriba de la Columna izquierda, fijo, mientras hay una fila abierta: "Buscando...", "Al dia" o "Sin actualizar" |
+| Artistas de la playlist | Filas de artista en orden alfabetico, invitados incluidos, sin los que ya estan en la Columna derecha. Si no queda ninguno: "Ya estan todos". Si nunca se pudo leer: "No pudimos leer esta playlist. Proba mas tarde." |
+| Bloque de nuevos | Al fondo de la fila abierta, apartado: "2 artistas nuevos" y sus Filas de artista en orden alfabetico. Dura hasta plegar la playlist; al volver a abrirla se mezclan con el resto |
+| Columna derecha | "Quienes entran": la Whitelist del Canal en Filas de artista, en orden alfabetico. Vacia: "Elegi artistas desde una playlist o buscalos." |
+| Buscador de artistas | Arriba de la Columna derecha; suma a la Lista manual. No aparece si el Canal usa Seed Playlists |
+| Aviso de Seed | En la Columna derecha si el Canal usa Seed Playlists, en lugar del Buscador: las filas no tienen flecha y el aviso lleva a Ajustes |
+
+### Vista Ajustes
+
+| Nombre | Que es |
+| --- | --- |
+| Seed Playlists | Las playlists usables del User con un Interruptor de playlist cada una. Con una prendida el Canal usa Seed; con ninguna, su Lista manual |
+| Interruptor de playlist | Prende o apaga la playlist como Seed Playlist de este Canal |
+| Interruptor Feats | Junto a cada Seed Playlist prendida: sumar tambien a sus invitados |
 | Caja Playlist | La Target Playlist del Canal, solo lectura: el Canal vive y muere con ella (ADR 0005) |
 | Aviso de playlist perdida | Aviso warn en la Caja Playlist si la Target ya no esta en la biblioteca del User |
 | Editor de Retencion | Caja "Cuanto guarda": Selector de Retencion + Semanas |
 | Semanas | 12 barritas que dibujan cuanto guarda |
 | Interruptor Guardado | Caja "Saltear lo que ya tengo" |
 | Resumen de Canal | Caja "En una frase": el Canal contado en una oracion |
-| Columna Whitelist | "Quienes entran": la Whitelist del Canal en Fichas de artista |
-| Columna Pistas | Datos de la biblioteca que ayudan a decidir (pendiente; hoy su lugar lo ocupa la Columna Whitelist) |
-| Quienes mas aparecen | Barras de los artistas del Canal por apariciones en tus playlists |
-| Sugerencias | "Te faltan en este Canal": artistas de otras playlists tuyas con boton Sumar |
-| Cruce con otros Canales | Artistas en comun con cada otro Canal |
 
 ### Vista Nuevo Canal
 
@@ -177,8 +182,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | --- | --- |
 | Cabecera de Inicio | "Hola, Luca" |
 | Boton Buscar novedades | Boton secundario en la Cabecera de Inicio: corre el Run en segundo plano y avisa con un Aviso de accion. Solo con Canales y sin desconexion |
-| Numeros de biblioteca | 4 numeros: playlists, artistas, seguidos, Canales |
-| Segui a tus mas escuchados | Top 8 artistas con Seguir y "Seguir a los 8" |
+| Numeros de biblioteca | 3 numeros: playlists, artistas, Canales |
 | Top de biblioteca | Barras de los 14 artistas con mas temas; gris si no estan en ningun Canal |
 | Tarjeta de gemelas | Dos playlists que se pisan, con "Unir en una" y "Dejarlas asi" |
 

@@ -36,8 +36,9 @@ la rama `research/deteccion-deezer`.
 
 - Cada artista de una Whitelist se vincula a su artista de Deezer una sola vez, y el vinculo
   es global (no por User). Primero por ISRC: un Track de una Seed Playlist donde figura el
-  artista, `GET /track/isrc:{isrc}` en Deezer. Si no hay ISRC (lista manual, follows), por
-  nombre exacto, y entre homonimos gana el de mas fans. Un artista sin vinculo no se explora.
+  artista o de la playlist de donde se eligio a mano, `GET /track/isrc:{isrc}` en Deezer. Si no
+  hay ISRC (artista buscado a mano), por nombre exacto, y entre homonimos gana el de mas fans.
+  Un artista sin vinculo no se explora.
 - Release se sigue definiendo igual pero se detecta en Deezer: todo lo que Deezer lista para
   el artista salvo `record_type = compile`, con `release_date` en la ventana del Run. Si el
   artista de la Whitelist esta en `album.artists` de Spotify entran todos los Tracks; si no,
