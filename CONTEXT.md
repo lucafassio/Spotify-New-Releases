@@ -42,7 +42,8 @@ desvincular, la playlist queda en la biblioteca del User, salvo que elija elimin
 _Avoid_: feed, radar, suscripcion
 
 **Whitelist**:
-Conjunto final de artistas que vigila un Canal. Es la union de sus Artist Sources.
+Conjunto final de artistas que vigila un Canal: lo que aporta la forma que usa, su Lista manual o
+la union de sus Seed Playlists.
 _Avoid_: Watchlist, tracked artists, artistas seguidos
 
 **Artist Source**:

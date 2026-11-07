@@ -33,13 +33,13 @@ def logged(db, spotify):
         app.dependency_overrides.clear()
 
 
-def playlist(playlist_id, name, owner, collaborative=False):
+def playlist(playlist_id, name, owner, collaborative=False, snapshot='v1', total=10):
     '''
     Playlist simplificada como la devuelve GET /me/playlists.
         Returns:
             playlist (dict): playlist de prueba
     '''
-    return {'id': playlist_id, 'name': name, 'owner': {'id': owner, 'display_name': owner}, 'collaborative': collaborative, 'items': {'total': 10}}
+    return {'id': playlist_id, 'name': name, 'owner': {'id': owner, 'display_name': owner}, 'collaborative': collaborative, 'snapshot_id': snapshot, 'items': {'total': total}}
 
 
 def mock_library(spotify, owner):
@@ -64,7 +64,7 @@ def test_create_canal_with_new_playlist(logged, db, spotify):
     assert created.calls.last.request.read() == b'{"name":"Radar","public":false,"description":"Lo nuevo de tus artistas, cada viernes. Radar de Viernes."}'
     assert canal['target_playlist_id'] == 'nueva'
     assert canal['target_created_by_bot'] is True
-    assert 'Columna Fuentes' in response.text
+    assert 'Columna izquierda' in response.text
     assert 'Canales &middot; 1/5' in response.text
 
 
@@ -97,37 +97,6 @@ def test_sixth_canal_is_rejected_before_creating_playlist(logged, db, spotify):
 
     assert 'que es el maximo' in response.text
     assert not created.called
-
-
-def test_three_sources_build_the_whitelist(logged, db, spotify):
-    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
-    mock_library(spotify, logged['spotify_user_id'])
-    spotify.get(f'{API_URL}/playlists/colab/items').respond(json={'items': [{'item': {'type': 'track', 'artists': [{'id': 'duki', 'name': 'Duki'}, {'id': 'ysy', 'name': 'YSY A'}]}}], 'next': None})
-    spotify.get(f'{API_URL}/me/following').respond(json={'artists': {'items': [{'id': 'mora', 'name': 'Mora'}], 'next': None}})
-    client = logged['client']
-
-    client.post(f'/canales/{canal_id}/seeds', data={'playlist_id': 'colab', 'on': '1'})
-    client.post(f'/canales/{canal_id}/follows', data={'on': '1'})
-    response = client.post(f'/canales/{canal_id}/manual', data={'artist_id': 'bb', 'name': 'Bad Bunny'})
-
-    whitelist = {row['name'] for row in canales.get_whitelist(db, canal_id)}
-    assert whitelist == {'Duki', 'Mora', 'Bad Bunny'}
-    for name in whitelist:
-        assert name in response.text
-    assert 'YSY A' not in response.text
-    assert 'Spotify no deja usarla' in response.text
-
-
-def test_feats_toggle_keeps_row_open(logged, db, spotify):
-    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
-    canales.add_source(db, canal_id, 'seed_playlist', {'duki': {'name': 'Duki', 'feat': False}, 'ysy': {'name': 'YSY A', 'feat': True}}, 'colab')
-    mock_library(spotify, logged['spotify_user_id'])
-
-    response = logged['client'].post(f'/canales/{canal_id}/feats', data={'playlist_id': 'colab', 'on': '1', 'open': 'colab'})
-
-    assert response.url.params['open'] == 'colab'
-    assert 'Artistas de la playlist' in response.text
-    assert {row['name'] for row in canales.get_whitelist(db, canal_id)} == {'Duki', 'YSY A'}
 
 
 def test_search_hides_artists_already_added(logged, db, spotify):

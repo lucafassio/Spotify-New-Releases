@@ -1,6 +1,6 @@
 from psycopg.rows import dict_row
 
-from app import spotify
+from app import copias, spotify
 
 # la quota de la Shared App la comparten todos los Users (ADR 0005)
 MAX_CANALES = 5
@@ -157,29 +157,13 @@ def get_sources(conn, canal_id):
     return sources
 
 
-def get_source_artists(conn, source_id):
-    '''
-    Lista los artistas guardados de un Artist Source, principales primero.
-        Args:
-            conn (psycopg.Connection): conexion abierta
-            source_id (int): id del Artist Source
-        Returns:
-            artists (list): filas con artist_id, name y feat
-    '''
-    artists = conn.cursor(row_factory=dict_row).execute(
-        'SELECT artist_id, name, feat FROM source_artists WHERE artist_source_id = %s ORDER BY feat, lower(name)',
-        (source_id,),
-    ).fetchall()
-    return artists
-
-
 def find_source(conn, canal_id, source_type, playlist_id=None):
     '''
     Busca el Artist Source de un tipo (y playlist) en el Canal.
         Args:
             conn (psycopg.Connection): conexion abierta
             canal_id (int): id del Canal
-            source_type (str): seed_playlist, manual o followed
+            source_type (str): seed_playlist o manual
             playlist_id (str): id de la playlist si es seed_playlist
         Returns:
             source_id (int): id del Artist Source, o None si no esta
@@ -215,7 +199,7 @@ def add_source(conn, canal_id, source_type, artists, playlist_id=None):
         Args:
             conn (psycopg.Connection): conexion abierta
             canal_id (int): id del Canal
-            source_type (str): seed_playlist o followed
+            source_type (str): seed_playlist
             artists (dict): artist_id -> {name, feat}, ya leidos de Spotify
             playlist_id (str): id de la playlist si es seed_playlist
         Returns:
@@ -240,7 +224,7 @@ def remove_source(conn, canal_id, source_type, playlist_id=None):
         Args:
             conn (psycopg.Connection): conexion abierta
             canal_id (int): id del Canal
-            source_type (str): seed_playlist o followed
+            source_type (str): seed_playlist
             playlist_id (str): id de la playlist si es seed_playlist
     '''
     conn.execute(
@@ -266,7 +250,20 @@ def set_feats(conn, canal_id, playlist_id, on):
     recalc_whitelist(conn, canal_id)
 
 
-def add_manual_artist(conn, canal_id, artist_id, name):
+def uses_seed(conn, canal_id):
+    '''
+    Dice como arma su Whitelist el Canal: con una Seed Playlist prendida manda Seed, si no la Lista manual (ADR 0008).
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            canal_id (int): id del Canal
+        Returns:
+            seed (bool): True si tiene al menos una Seed Playlist
+    '''
+    seed = any(source['type'] == 'seed_playlist' for source in get_sources(conn, canal_id))
+    return seed
+
+
+def add_manual_artist(conn, canal_id, artist_id, name, isrc=None):
     '''
     Suma un artista a la lista manual del Canal, creando la lista si no existe.
         Args:
@@ -274,6 +271,7 @@ def add_manual_artist(conn, canal_id, artist_id, name):
             canal_id (int): id del Canal
             artist_id (str): id de Spotify del artista
             name (str): nombre del artista
+            isrc (str): un Track donde figura, para vincularlo con Deezer (ADR 0007); lo buscado a mano no lo tiene
     '''
     source_id = find_source(conn, canal_id, 'manual')
 
@@ -281,8 +279,8 @@ def add_manual_artist(conn, canal_id, artist_id, name):
         source_id = conn.execute("INSERT INTO artist_sources (canal_id, type) VALUES (%s, 'manual') RETURNING id", (canal_id,)).fetchone()[0]
 
     conn.execute(
-        'INSERT INTO source_artists (artist_source_id, artist_id, name) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING',
-        (source_id, artist_id, name),
+        'INSERT INTO source_artists (artist_source_id, artist_id, name, isrc) VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING',
+        (source_id, artist_id, name, isrc),
     )
     recalc_whitelist(conn, canal_id)
 
@@ -304,7 +302,7 @@ def remove_manual_artist(conn, canal_id, artist_id):
 
 def recalc_whitelist(conn, canal_id):
     '''
-    Deja la Whitelist igual a la union de los Artist Sources del Canal (ADR 0006).
+    Deja la Whitelist igual a lo que aporta la forma que usa el Canal: sus Seed Playlists si tiene alguna, si no su Lista manual (ADR 0008).
         Args:
             conn (psycopg.Connection): conexion abierta
             canal_id (int): id del Canal
@@ -313,6 +311,7 @@ def recalc_whitelist(conn, canal_id):
     wanted = '''
         SELECT sa.artist_id FROM source_artists sa JOIN artist_sources s ON s.id = sa.artist_source_id
         WHERE s.canal_id = %(canal_id)s AND (NOT sa.feat OR s.include_feats)
+            AND s.type = CASE WHEN EXISTS (SELECT 1 FROM artist_sources WHERE canal_id = %(canal_id)s AND type = 'seed_playlist') THEN 'seed_playlist' ELSE 'manual' END
     '''
 
     # el que sale se borra: si vuelve entra con added_at nuevo, como un alta (ADR 0006)
@@ -327,48 +326,48 @@ def get_whitelist(conn, canal_id):
             conn (psycopg.Connection): conexion abierta
             canal_id (int): id del Canal
         Returns:
-            whitelist (list): filas con artist_id, name y added_at, por nombre
+            whitelist (list): filas con artist_id, name y added_at, en orden alfabetico
     '''
     whitelist = conn.cursor(row_factory=dict_row).execute(
         '''
-        SELECT * FROM (
-            SELECT w.artist_id, w.added_at,
-                (SELECT sa.name FROM source_artists sa JOIN artist_sources s ON s.id = sa.artist_source_id
-                 WHERE s.canal_id = w.canal_id AND sa.artist_id = w.artist_id LIMIT 1) AS name
-            FROM whitelist_artists w WHERE w.canal_id = %s
-        ) whitelist ORDER BY lower(name)
+        SELECT w.artist_id, w.added_at,
+            (SELECT sa.name FROM source_artists sa JOIN artist_sources s ON s.id = sa.artist_source_id
+             WHERE s.canal_id = w.canal_id AND sa.artist_id = w.artist_id LIMIT 1) AS name
+        FROM whitelist_artists w WHERE w.canal_id = %s
         ''',
         (canal_id,),
     ).fetchall()
+    whitelist.sort(key=lambda row: copias.artist_sort_key(row['name']))
     return whitelist
 
 
-def refresh_sources(conn, access_token, canal_id, snapshots):
+def refresh_sources(conn, access_token, canal, library):
     '''
-    Vuelve a leer de Spotify las Seed Playlists que cambiaron y los follows del Canal, y recalcula la Whitelist.
+    Pone al dia las Seed Playlists del Canal que cambiaron, leyendo por su Copia de playlist, y recalcula la Whitelist; una Lista manual no lee nada.
         Args:
             conn (psycopg.Connection): conexion abierta
             access_token (str): access token del User
-            canal_id (int): id del Canal
-            snapshots (dict): playlist_id -> snapshot_id actual, sacado de GET /me/playlists
+            canal (dict): fila de canales
+            library (dict): playlist_id -> playlist de GET /me/playlists, ya guardada con copias.save_library
     '''
-    for source in get_sources(conn, canal_id):
-        if source['type'] == 'followed':
-            save_source_artists(conn, source['id'], spotify.get_followed_artists(access_token))
-            continue
-
+    for source in get_sources(conn, canal['id']):
         if source['type'] != 'seed_playlist':
             continue
 
         # una playlist que ya no esta en la biblioteca deja sus artistas como estaban; una igual no gasta quota (ADR 0007)
-        snapshot_id = snapshots.get(source['playlist_id'])
-        if snapshot_id is None or snapshot_id == source['snapshot_id']:
+        playlist = library.get(source['playlist_id'])
+        if playlist is None or playlist.get('snapshot_id') == source['snapshot_id']:
             continue
 
-        save_source_artists(conn, source['id'], spotify.get_playlist_artists(access_token, source['playlist_id']))
-        conn.execute('UPDATE artist_sources SET snapshot_id = %s WHERE id = %s', (snapshot_id, source['id']))
+        # otro Canal pudo haber refrescado la misma copia: se compara contra la Seed, no contra la copia
+        result = copias.refresh(conn, access_token, canal['user_id'], playlist)
+        if result['status'] == 'failed':
+            raise result['error']
 
-    recalc_whitelist(conn, canal_id)
+        save_source_artists(conn, source['id'], copias.get_artists(conn, canal['user_id'], source['playlist_id']))
+        conn.execute('UPDATE artist_sources SET snapshot_id = %s WHERE id = %s', (playlist.get('snapshot_id'), source['id']))
+
+    recalc_whitelist(conn, canal['id'])
 
 
 def delete_canal(conn, access_token, canal, delete_playlist):

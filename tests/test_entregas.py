@@ -86,7 +86,7 @@ def playlist(canal, total=0):
         Returns:
             playlist (dict): playlist simplificada
     '''
-    return {'id': canal['target_playlist_id'], 'name': canal['target_name'], 'items': {'total': total}}
+    return {'id': canal['target_playlist_id'], 'name': canal['target_name'], 'owner': {'id': 'dueno'}, 'items': {'total': total}}
 
 
 def mock_post(spotify, canal, *responses):

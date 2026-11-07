@@ -10,7 +10,6 @@ cambio alcanza con "en la Fila de playlist, ...". Si un nombre choca con el glos
 `CONTEXT.md`, gana el glosario y se renombra aca.
 
 Estado: base definida (#10). Layout base elegido en #7 (ronda 4, dashboard fijo); pulido visual pendiente.
-Vista Canal y Vista Ajustes describen el rediseno de ADR 0008, pendiente de implementar: hasta entonces el codigo muestra las tres columnas viejas.
 
 Interacciones de Vista Canal: la Flecha de artista mueve sin llamar a Spotify y actualiza las dos columnas y el contador de la Barra lateral.
 Una sola Fila de playlist abierta a la vez: abrir otra pliega la anterior. La fila muestra su copia guardada al instante y la actualiza por detras.
@@ -50,7 +49,7 @@ Verde solo para accion principal, seleccion y datos que cuentan. Nada de verde d
 | `--texto-3` | `#6E716B` | Pistas, "+N mas", barras de lo que no esta en ningun Canal |
 | `--verde` | `#1ED760` | Boton primario, Interruptor encendido, seleccion, barras |
 | `--verde-hondo` | `#13A049` | Rayado de "guarda todo" en Semanas |
-| `--verde-suave` | 13% de verde | Fondo de Ficha de artista incluida |
+| `--verde-suave` | 13% de verde | Fondo de Aviso ok |
 | `--verde-tinta` | `#04210F` | Texto secundario sobre verde |
 | `--scroll` / `--scroll-hover` | `#333333` / `#4A4A4A` | Barra de scroll de los paneles |
 | `--lima` | `#C6F432` | Solo herramientas del prototipo (capa de Nombres) |
@@ -85,7 +84,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Nombre | Que es |
 | --- | --- |
 | Boton primario | Pildora verde, texto negro. Una por vista |
-| Boton secundario | Pildora con contorno gris ("Sumar", "Seguir") |
+| Boton secundario | Pildora con contorno gris ("Ajustes", "Sumar") |
 | Boton fantasma | Solo texto gris |
 | Boton Desvincular | Texto rojo, abre la Confirmacion de desvincular |
 | Interruptor | Switch on/off (verde prendido) |
@@ -134,7 +133,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Cabecera de Canal | Portada, nombre del Canal, Boton Ajustes y Desvincular, con el tono del Canal |
 | Boton Ajustes | Abre la Vista Ajustes en lugar de las dos columnas; desde ahi vuelve a la Vista Canal |
 | Confirmacion de desvincular | Globo oscuro-rojo bajo la Cabecera con las dos formas de borrar: Borrar Canal / Borrar Canal y playlist |
-| Columna | Cada una de las dos columnas del Panel; scrollea sola |
+| Columna | Cada una de las dos columnas del Panel, en Vista Canal y en Vista Ajustes; scrollea sola |
 
 ### Vista Canal
 
@@ -158,6 +157,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Seed Playlists | Las playlists usables del User con un Interruptor de playlist cada una. Con una prendida el Canal usa Seed; con ninguna, su Lista manual |
 | Interruptor de playlist | Prende o apaga la playlist como Seed Playlist de este Canal |
 | Interruptor Feats | Junto a cada Seed Playlist prendida: sumar tambien a sus invitados |
+| Columna de reglas | Columna derecha de la Vista Ajustes: Caja Playlist, Editor de Retencion, Interruptor Guardado y Resumen de Canal |
 | Caja Playlist | La Target Playlist del Canal, solo lectura: el Canal vive y muere con ella (ADR 0005) |
 | Aviso de playlist perdida | Aviso warn en la Caja Playlist si la Target ya no esta en la biblioteca del User |
 | Editor de Retencion | Caja "Cuanto guarda": Selector de Retencion + Semanas |

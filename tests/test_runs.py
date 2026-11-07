@@ -370,3 +370,35 @@ def test_run_already_going_is_busy(db, spotify, db_schema):
             runs.run_user(db, user, THURSDAY)
 
         other.execute('SELECT pg_advisory_unlock(%s, %s)', (runs.RUN_LOCK, user['id']))
+
+
+def test_manual_canal_reads_no_playlist_items(db, spotify):
+    user = new_user(db, spotify)
+    canal_id = canales.create_canal(db, user['id'], uid('p'), 'Radar', True)
+    canales.add_manual_artist(db, canal_id, uid('a'), 'Artista')
+    db.commit()
+    other = uid('o')
+    spotify.get(f'{API_URL}/me/playlists').respond(json={'items': [{'id': other, 'name': 'Otra', 'owner': {'id': 'yo'}, 'snapshot_id': 's1', 'items': {'total': 3}}], 'next': None})
+    tracks = spotify.get(f'{API_URL}/playlists/{other}/items').respond(json={'items': [], 'next': None})
+    spotify.get(url__startswith=DEEZER_URL).respond(json={'data': []})
+
+    runs.run_user(db, user, THURSDAY)
+
+    assert tracks.call_count == 0
+    assert db.execute('SELECT name FROM playlist_copies WHERE user_id = %s', (user['id'],)).fetchone()[0] == 'Otra'
+
+
+def test_changed_seed_updates_the_whitelist(db, spotify):
+    user = new_user(db, spotify)
+    canal_id = canales.create_canal(db, user['id'], uid('p'), 'Radar', True)
+    seed, old, new = uid('s'), uid('a'), uid('b')
+    canales.add_source(db, canal_id, 'seed_playlist', {old: {'name': 'Viejo', 'feat': False, 'isrc': None}}, seed)
+    db.commit()
+    spotify.get(f'{API_URL}/me/playlists').respond(json={'items': [{'id': seed, 'name': 'Seed', 'owner': {'id': 'yo'}, 'snapshot_id': 's2', 'items': {'total': 1}}], 'next': None})
+    tracks = spotify.get(f'{API_URL}/playlists/{seed}/items').respond(json={'items': [{'item': {'type': 'track', 'uri': 'spotify:track:t1', 'artists': [{'id': new, 'name': 'Nuevo'}]}}], 'next': None})
+    spotify.get(url__startswith=DEEZER_URL).respond(json={'data': []})
+
+    runs.run_user(db, user, THURSDAY)
+
+    assert tracks.call_count == 1
+    assert [row['artist_id'] for row in canales.get_whitelist(db, canal_id)] == [new]

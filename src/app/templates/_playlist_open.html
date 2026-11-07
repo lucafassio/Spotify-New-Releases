@@ -1,0 +1,9 @@
+{% import '_macros.html' as ui %}
+<div id="artistas-{{ open_id }}" class="filas pl-art" data-sorted data-n="Artistas de la playlist">
+  {% if open_artists is none %}<small role="status">Cargando artistas...</small>
+  {% else %}{% for artist in open_artists %}{{ ui.playlist_artist(canal.id, open_id, artist) }}{% else %}{{ ui.all_chosen(open_id) }}{% endfor %}{% endif %}
+</div>
+<div id="nuevos-{{ open_id }}"></div>
+{# con hx-sync propio: un refresco lento no frena las flechas, que hacen cola en el Panel #}
+<div hx-get="/canales/{{ canal.id }}/playlists/{{ open_id }}/refrescar" hx-trigger="load" hx-swap="none" hx-sync="this:drop"></div>
+{% if oob %}<small id="indicador" hx-swap-oob="innerHTML"><span id="ind-{{ open_id }}">Buscando...</span></small>{% endif %}

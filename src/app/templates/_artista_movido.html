@@ -1,0 +1,18 @@
+{% import '_macros.html' as ui %}
+{% if added %}
+<div id="wl-vacio" hx-swap-oob="delete"></div>
+<div hx-swap-oob="beforeend:#whitelist-filas">{{ ui.whitelist_row(canal.id, added, true, open_id) }}</div>
+{% if from_search %}<div id="res-{{ artist_id }}" hx-swap-oob="delete"></div>{% endif %}
+{% if open_id %}<div id="art-{{ open_id }}-{{ artist_id }}" hx-swap-oob="delete"></div>{% endif %}
+{% if left_empty %}<div hx-swap-oob="beforeend:#artistas-{{ open_id }}">{{ ui.all_chosen(open_id) }}</div>{% endif %}
+{% else %}
+<div id="wl-{{ artist_id }}" hx-swap-oob="delete"></div>
+{% if back %}
+<div id="vacio-{{ open_id }}" hx-swap-oob="delete"></div>
+<div hx-swap-oob="beforeend:#artistas-{{ open_id }}">{{ ui.playlist_artist(canal.id, open_id, back) }}</div>
+{% endif %}
+{% if not whitelist_size %}<div hx-swap-oob="beforeend:#whitelist-filas">{{ ui.whitelist_empty() }}</div>{% endif %}
+{% endif %}
+<small id="whitelist-count" class="nums" hx-swap-oob="true">{{ whitelist_size }} artistas</small>
+{% set oob = true %}
+{% include '_canal_nav.html' %}

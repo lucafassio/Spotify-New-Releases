@@ -37,7 +37,9 @@ status: accepted
 > artists_snapshot_id NULL, last_track_uri NULL)`, con NULL = nunca abierta, y
 > `PlaylistCopyArtist(user_id, playlist_id, artist_id, name, feat, isrc)`. Son por User y se
 > escriben al listar la biblioteca y al abrir una playlist. `SourceArtist` sigue igual: la Lista
-> manual y cada Seed Playlist guardan ahi sus artistas, aparte de la copia.
+> manual y cada Seed Playlist guardan ahi sus artistas, aparte de la copia. `PlaylistCopy` suma
+> ademas `position` (pintar en el orden de Spotify sin llamarlo) y `artists_total NULL` (items
+> que habia al leer los artistas, porque `total` lo pisa la biblioteca antes de refrescar).
 
 Las decisiones de #5 y #6 (ADR 0002-0005) ya fijaron la semantica; esto cierra el shape de
 tablas para implementarla. Tokens y credenciales de Own App se guardan cifrados (Fernet) en
@@ -58,7 +60,7 @@ mismo dia hace upsert sobre la misma fila.
 
 - `User(id, spotify_user_id, connection_mode, client_id NULL, client_secret_enc NULL, refresh_token_enc NULL, disconnected_at NULL, created_at)`
 - `Canal(id, user_id, target_playlist_id, target_name, target_created_by_bot, retencion_n NULL, guardado_filter, created_at)`
-- `ArtistSource(id, canal_id, type[seed_playlist|manual|followed], playlist_id NULL, include_feats)` — varias
+- `ArtistSource(id, canal_id, type[seed_playlist|manual], playlist_id NULL, include_feats)` — varias
   filas del mismo type por Canal, ej. multiples Seed Playlists
 - `SourceArtist(artist_source_id, artist_id, name, feat)` (era `ManualSourceArtist`, enmienda #14)
 - `WhitelistArtist(canal_id, artist_id, added_at)`

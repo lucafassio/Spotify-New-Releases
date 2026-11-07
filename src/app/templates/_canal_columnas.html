@@ -1,0 +1,42 @@
+{% import '_macros.html' as ui %}
+{# ignore:morph en lo que reciben swaps fuera de banda: con la extension activa htmx inserta el elemento envoltorio en vez de su contenido #}
+<div class="cols">
+    <section class="col {{ 'apagada' if uses_seed }}" data-n="Columna izquierda" {% if uses_seed %}inert{% endif %}><header><h2>Tus playlists</h2><small id="indicador" hx-ext="ignore:morph" class="nums" role="status" data-n="Indicador de lectura">{% if open_id %}<span id="ind-{{ open_id }}">Buscando...</span>{% endif %}</small></header>
+      <div class="col-body scroll" id="col-playlists" hx-ext="ignore:morph">
+        {% for row in rows %}
+        {% if row.usable %}
+        <div class="pl" id="pl-{{ row.playlist_id }}" data-n="Fila de playlist">
+          <div class="pl-row">{{ ui.cover(row.name, row.playlist_id, 40) }}
+            <span class="grow"><span class="nm ellip">{{ row.name }}</span><small class="nums">{{ row.total }} canciones</small></span>
+            {% if not uses_seed %}<a class="chev" hx-boost="false" data-playlist="{{ row.playlist_id }}" data-artists-url="/canales/{{ canal.id }}/playlists/{{ row.playlist_id }}" href="{{ canal_url(canal.id, none if row.playlist_id == open_id else row.playlist_id) }}" aria-expanded="{{ 'true' if row.playlist_id == open_id else 'false' }}" aria-label="Ver artistas" data-n="Boton ver artistas">&rsaquo;</a>{% endif %}</div>
+          <div id="detalle-{{ row.playlist_id }}" data-detalle {% if row.playlist_id != open_id %}hidden{% endif %}>
+            {% if row.playlist_id == open_id %}{% include '_playlist_open.html' %}{% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div class="pl off" id="pl-{{ row.playlist_id }}" data-n="Fila no disponible">
+          <div class="pl-row">{{ ui.cover(row.name, row.playlist_id, 40) }}
+            <span class="grow"><span class="nm ellip">{{ row.name }}</span><small>No disponible</small></span></div>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="col" data-n="Columna derecha"><header><h2>Quienes entran</h2><small id="whitelist-count" class="nums">{{ whitelist | length }} artistas</small></header>
+      <div class="col-body scroll" id="col-whitelist" hx-ext="ignore:morph">
+        {% if uses_seed %}
+        <div class="aviso" data-n="Aviso de Seed">Este Canal sigue sus Seed Playlists. <a href="/canales/{{ canal.id }}/ajustes"><b>Cambialo en Ajustes</b></a></div>
+        {% else %}
+        <div class="stack" style="gap:6px">
+          <input type="search" name="q" placeholder="Buscar un artista para sumar" autocomplete="off" data-n="Buscador de artistas"
+            hx-get="/canales/{{ canal.id }}/buscar" hx-trigger="input changed delay:300ms, search" hx-sync="this:replace" hx-target="#res" hx-swap="innerHTML">
+          <div id="res"></div>
+        </div>
+        {% endif %}
+        <div id="whitelist-filas" class="filas" data-sorted>
+          {% for artist in whitelist %}{{ ui.whitelist_row(canal.id, artist, not uses_seed, open_id) }}{% else %}{% if uses_seed %}<small>Tus Seed Playlists todavia no aportan artistas.</small>{% else %}{{ ui.whitelist_empty() }}{% endif %}{% endfor %}
+        </div>
+      </div>
+    </section>
+</div>

@@ -2,7 +2,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 
-from app import canales, deezer, entregas, spotify, users
+from app import canales, copias, deezer, entregas, spotify, users
 
 # Argentina no tiene horario de verano: un offset fijo evita depender de tzdata en Windows
 ART = timezone(timedelta(hours=-3))
@@ -123,12 +123,13 @@ def explore(conn, user, today):
 
     # una sola lectura de la biblioteca sirve para los nombres de las Targets y para saber que Seed Playlist cambio
     playlists = spotify.get_my_playlists(access_token)
+    copias.save_library(conn, user['id'], playlists)
     canales.sync_target_names(conn, user['id'], playlists)
-    snapshots = {playlist['id']: playlist.get('snapshot_id') for playlist in playlists}
+    library = {playlist['id']: playlist for playlist in playlists}
     lotes = {}
 
     for canal in canales.list_canales(conn, user['id']):
-        canales.refresh_sources(conn, access_token, canal['id'], snapshots)
+        canales.refresh_sources(conn, access_token, canal, library)
         lotes[canal['id']] = open_lote(conn, canal['id'], today)
 
     conn.commit()

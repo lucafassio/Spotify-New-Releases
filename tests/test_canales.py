@@ -2,7 +2,7 @@ import uuid
 
 import pytest
 
-from app import canales, users
+from app import canales, copias, users
 from app import spotify as spotify_api
 from app.spotify import API_URL
 
@@ -93,14 +93,36 @@ def test_other_user_cannot_see_canal(db):
     assert canales.get_canal(db, new_user(db), canal_id) is None
 
 
-def test_whitelist_is_union_of_sources_without_feats(db):
+def test_seeds_are_a_union_without_feats_and_exclude_the_lista_manual(db):
     canal_id = canales.create_canal(db, new_user(db), 'p1', 'Rock', True)
-
-    canales.add_source(db, canal_id, 'seed_playlist', artists(a=False, b=False, x=True), 'seed1')
-    canales.add_source(db, canal_id, 'followed', artists(b=False, c=False))
     canales.add_manual_artist(db, canal_id, 'd', 'D')
 
-    assert whitelist_ids(db, canal_id) == {'a', 'b', 'c', 'd'}
+    canales.add_source(db, canal_id, 'seed_playlist', artists(a=False, b=False, x=True), 'seed1')
+    canales.add_source(db, canal_id, 'seed_playlist', artists(b=False, c=False), 'seed2')
+
+    assert whitelist_ids(db, canal_id) == {'a', 'b', 'c'}
+
+
+def test_lista_manual_comes_back_when_the_last_seed_goes(db):
+    canal_id = canales.create_canal(db, new_user(db), 'p1', 'Rock', True)
+    canales.add_manual_artist(db, canal_id, 'd', 'D')
+    canales.add_source(db, canal_id, 'seed_playlist', artists(a=False), 'seed1')
+
+    canales.remove_source(db, canal_id, 'seed_playlist', 'seed1')
+
+    assert whitelist_ids(db, canal_id) == {'d'}
+
+
+def test_artist_in_both_forms_keeps_added_at_when_switching(db):
+    canal_id = canales.create_canal(db, new_user(db), 'p1', 'Rock', True)
+    canales.add_manual_artist(db, canal_id, 'a', 'A')
+    db.execute("UPDATE whitelist_artists SET added_at = now() - interval '30 days' WHERE canal_id = %s", (canal_id,))
+    old = canales.get_whitelist(db, canal_id)[0]['added_at']
+
+    canales.add_source(db, canal_id, 'seed_playlist', artists(a=False), 'seed1')
+    canales.remove_source(db, canal_id, 'seed_playlist', 'seed1')
+
+    assert canales.get_whitelist(db, canal_id)[0]['added_at'] == old
 
 
 def test_feats_toggle_adds_and_removes_guests(db):
@@ -131,13 +153,9 @@ def test_artist_that_leaves_and_returns_gets_new_added_at(db):
     db.execute("UPDATE whitelist_artists SET added_at = now() - interval '30 days' WHERE canal_id = %s", (canal_id,))
     old = canales.get_whitelist(db, canal_id)[0]['added_at']
 
-    canales.add_source(db, canal_id, 'followed', artists(a=False))
-    kept = canales.get_whitelist(db, canal_id)[0]['added_at']
     canales.remove_manual_artist(db, canal_id, 'a')
-    canales.remove_source(db, canal_id, 'followed')
     canales.add_manual_artist(db, canal_id, 'a', 'A')
 
-    assert kept == old
     assert canales.get_whitelist(db, canal_id)[0]['added_at'] > old
 
 
@@ -181,39 +199,108 @@ def test_delete_canal_with_playlist_removes_it_from_library(db, spotify):
     assert canales.get_canal(db, user_id, canal_id) is None
 
 
-def test_refresh_sources_rereads_spotify(db, spotify):
-    canal_id = canales.create_canal(db, new_user(db), 'p1', 'Rock', True)
-    canales.add_source(db, canal_id, 'followed', artists(a=False))
-    spotify.get(f'{API_URL}/me/following').respond(json={'artists': {'items': [{'id': 'b', 'name': 'B'}], 'next': None}})
+def seed_library(db, user_id, *playlists):
+    '''
+    Guarda la biblioteca como lo hace el Run antes de refrescar las Seed Playlists.
+        Returns:
+            library (dict): playlist_id -> playlist
+    '''
+    copias.save_library(db, user_id, list(playlists))
+    return {playlist['id']: playlist for playlist in playlists}
 
-    canales.refresh_sources(db, 'token', canal_id, {})
 
-    assert whitelist_ids(db, canal_id) == {'b'}
+def library_playlist(playlist_id, snapshot, total=1):
+    '''
+    Playlist de GET /me/playlists.
+        Returns:
+            playlist (dict): playlist simplificada
+    '''
+    return {'id': playlist_id, 'name': playlist_id, 'owner': {'id': 'yo'}, 'snapshot_id': snapshot, 'items': {'total': total}}
+
+
+def test_refresh_sources_lista_manual_reads_nothing(db, spotify):
+    user_id = new_user(db)
+    canal = canales.get_canal(db, user_id, canales.create_canal(db, user_id, 'p1', 'Rock', True))
+    canales.add_manual_artist(db, canal['id'], 'a', 'A')
+    library = seed_library(db, user_id, library_playlist('otra', 's1'))
+
+    canales.refresh_sources(db, 'token', canal, library)
+
+    assert whitelist_ids(db, canal['id']) == {'a'}
+    assert not spotify.calls
 
 
 def test_refresh_sources_rereads_only_changed_seeds(db, spotify):
-    canal_id = canales.create_canal(db, new_user(db), 'p1', 'Rock', True)
-    canales.add_source(db, canal_id, 'seed_playlist', artists(a=False), 'igual')
-    canales.add_source(db, canal_id, 'seed_playlist', artists(b=False), 'cambio')
-    db.execute("UPDATE artist_sources SET snapshot_id = 's1' WHERE canal_id = %s", (canal_id,))
+    user_id = new_user(db)
+    canal = canales.get_canal(db, user_id, canales.create_canal(db, user_id, 'p1', 'Rock', True))
+    canales.add_source(db, canal['id'], 'seed_playlist', artists(a=False), 'igual')
+    canales.add_source(db, canal['id'], 'seed_playlist', artists(b=False), 'cambio')
+    db.execute("UPDATE artist_sources SET snapshot_id = 's1' WHERE canal_id = %s", (canal['id'],))
     same = spotify.get(f'{API_URL}/playlists/igual/items').respond(json={'items': [], 'next': None})
     changed = spotify.get(f'{API_URL}/playlists/cambio/items').respond(json={'items': [track('c', external_ids={'isrc': 'X1'})], 'next': None})
+    library = seed_library(db, user_id, library_playlist('igual', 's1'), library_playlist('cambio', 's2'))
 
-    canales.refresh_sources(db, 'token', canal_id, {'igual': 's1', 'cambio': 's2'})
+    canales.refresh_sources(db, 'token', canal, library)
 
     assert not same.called
     assert changed.called
-    assert whitelist_ids(db, canal_id) == {'a', 'c'}
-    assert db.execute("SELECT isrc FROM source_artists WHERE artist_id = 'c'").fetchone()[0] == 'X1'
+    assert whitelist_ids(db, canal['id']) == {'a', 'c'}
+    assert db.execute("SELECT sa.isrc FROM source_artists sa JOIN artist_sources s ON s.id = sa.artist_source_id WHERE s.canal_id = %s AND sa.artist_id = 'c'", (canal['id'],)).fetchone()[0] == 'X1'
+
+
+def test_refresh_sources_uses_a_copy_another_canal_already_refreshed(db, spotify):
+    user_id = new_user(db)
+    canal = canales.get_canal(db, user_id, canales.create_canal(db, user_id, 'p1', 'Rock', True))
+    canales.add_source(db, canal['id'], 'seed_playlist', artists(a=False), 'seed')
+    db.execute("UPDATE artist_sources SET snapshot_id = 's1' WHERE canal_id = %s", (canal['id'],))
+    route = spotify.get(f'{API_URL}/playlists/seed/items').respond(json={'items': [track('b')], 'next': None})
+    library = seed_library(db, user_id, library_playlist('seed', 's2'))
+    copias.refresh(db, 'token', user_id, library['seed'])
+
+    canales.refresh_sources(db, 'token', canal, library)
+
+    assert route.call_count == 1
+    assert whitelist_ids(db, canal['id']) == {'b'}
+
+
+def test_refresh_sources_tail_only_when_tracks_were_added(db, spotify):
+    user_id = new_user(db)
+    canal = canales.get_canal(db, user_id, canales.create_canal(db, user_id, 'p1', 'Rock', True))
+    old = track('a', uri='spotify:track:t1')
+    route = spotify.get(f'{API_URL}/playlists/seed/items').respond(json={'items': [old], 'next': None})
+    copias.save_library(db, user_id, [library_playlist('seed', 's1')])
+    copias.refresh(db, 'token', user_id, library_playlist('seed', 's1'))
+    canales.add_source(db, canal['id'], 'seed_playlist', copias.get_artists(db, user_id, 'seed'), 'seed')
+    route.respond(json={'items': [old, track('b', uri='spotify:track:t2')], 'next': None})
+    route.reset()
+    library = seed_library(db, user_id, library_playlist('seed', 's2', total=2))
+
+    canales.refresh_sources(db, 'token', canal, library)
+
+    assert route.call_count == 1
+    assert route.calls.last.request.url.params.get('offset') is None
+    assert whitelist_ids(db, canal['id']) == {'a', 'b'}
+
+
+def test_refresh_sources_lets_the_run_see_spotify_failures(db, spotify):
+    user_id = new_user(db)
+    canal = canales.get_canal(db, user_id, canales.create_canal(db, user_id, 'p1', 'Rock', True))
+    canales.add_source(db, canal['id'], 'seed_playlist', artists(a=False), 'seed')
+    spotify.get(f'{API_URL}/playlists/seed/items').respond(429, headers={'Retry-After': '86000'}, json={'error': {'status': 429, 'reason': 'QUOTA_EXCEEDED'}})
+    library = seed_library(db, user_id, library_playlist('seed', 's2'))
+
+    with pytest.raises(spotify_api.QuotaExceeded):
+        canales.refresh_sources(db, 'token', canal, library)
 
 
 def test_refresh_sources_keeps_seed_missing_from_library(db, spotify):
-    canal_id = canales.create_canal(db, new_user(db), 'p1', 'Rock', True)
-    canales.add_source(db, canal_id, 'seed_playlist', artists(a=False), 'borrada')
+    user_id = new_user(db)
+    canal = canales.get_canal(db, user_id, canales.create_canal(db, user_id, 'p1', 'Rock', True))
+    canales.add_source(db, canal['id'], 'seed_playlist', artists(a=False), 'borrada')
 
-    canales.refresh_sources(db, 'token', canal_id, {})
+    canales.refresh_sources(db, 'token', canal, {})
 
-    assert whitelist_ids(db, canal_id) == {'a'}
+    assert whitelist_ids(db, canal['id']) == {'a'}
     assert not spotify.calls
 
 
@@ -255,7 +342,7 @@ def test_playlist_artists_keep_an_isrc(spotify):
 
 
 def spotify_artists(playlist_id):
-    return spotify_api.get_playlist_artists('token', playlist_id)
+    return spotify_api.collect_artists(spotify_api.get_playlist_entries('token', playlist_id))
 
 
 def test_playlist_artists_follows_pages(spotify):
@@ -264,11 +351,3 @@ def test_playlist_artists_follows_pages(spotify):
     spotify.get(f'{API_URL}/playlists/s1/items').respond(json={'items': [track('a')], 'next': second})
 
     assert set(spotify_artists('s1')) == {'a', 'b'}
-
-
-def test_followed_artists_follow_cursor(spotify):
-    second = f'{API_URL}/me/following?type=artist&after=a&limit=50'
-    spotify.get(second).respond(json={'artists': {'items': [{'id': 'b', 'name': 'B'}], 'next': None}})
-    spotify.get(f'{API_URL}/me/following').respond(json={'artists': {'items': [{'id': 'a', 'name': 'A'}], 'next': second}})
-
-    assert set(spotify_api.get_followed_artists('token')) == {'a', 'b'}

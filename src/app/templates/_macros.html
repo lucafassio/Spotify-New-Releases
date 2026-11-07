@@ -9,10 +9,33 @@
 {%- endmacro %}
 
 {# Interruptor: un form por switch para que funcione igual sin JS #}
-{% macro switch(action, on, fields={}, n='Interruptor', disabled=False, label='', target='#canal-panel') -%}
+{% macro switch(action, on, fields={}, n='Interruptor', label='', target='#canal-panel') -%}
 <form method="post" action="{{ action }}" class="swf" hx-post="{{ action }}" hx-target="{{ target }}" hx-swap="morph:outerHTML" hx-disabled-elt="find button">
   {% for key, value in fields.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
   <input type="hidden" name="on" value="{{ '0' if on else '1' }}">
-  <button class="sw" role="switch" aria-checked="{{ 'true' if on else 'false' }}" aria-label="{{ label }}" data-n="{{ n }}" {% if disabled %}disabled{% endif %}></button>
+  <button class="sw" role="switch" aria-checked="{{ 'true' if on else 'false' }}" aria-label="{{ label }}" data-n="{{ n }}"></button>
 </form>
+{%- endmacro %}
+
+{# Fila de artista de la Columna izquierda: id con la playlist, para bajarla sin tocar el resto de la lista #}
+{% macro playlist_artist(canal_id, playlist_id, artist) -%}
+<div class="fila" id="art-{{ playlist_id }}-{{ artist.artist_id }}" data-sort="{{ artist.name | artist_key }}" data-n="Fila de artista">{{ avatar(artist.name, 26) }}<span class="grow ellip">{{ artist.name }}</span>
+  <form method="post" action="/canales/{{ canal_id }}/artistas/sumar" hx-post="/canales/{{ canal_id }}/artistas/sumar" hx-swap="none" hx-disabled-elt="find button"><input type="hidden" name="playlist_id" value="{{ playlist_id }}"><input type="hidden" name="artist_id" value="{{ artist.artist_id }}"><button class="flecha" aria-label="Sumar a {{ artist.name }}" data-n="Flecha de artista">&rarr;</button></form>
+</div>
+{%- endmacro %}
+
+{# Fila de artista de la Columna derecha: con Seed se lee y nada mas #}
+{% macro whitelist_row(canal_id, artist, movable, open_id) -%}
+<div class="fila" id="wl-{{ artist.artist_id }}" data-sort="{{ artist.name | artist_key }}" data-n="Fila de artista">
+  {% if movable %}<form method="post" action="/canales/{{ canal_id }}/artistas/quitar" hx-post="/canales/{{ canal_id }}/artistas/quitar" hx-swap="none" hx-disabled-elt="find button"><input type="hidden" name="artist_id" value="{{ artist.artist_id }}"><input type="hidden" name="open" value="{{ open_id or '' }}"><button class="flecha" aria-label="Sacar a {{ artist.name }}" data-n="Flecha de artista">&larr;</button></form>{% endif %}
+  {{ avatar(artist.name or '?', 26) }}<span class="grow ellip">{{ artist.name }}</span>
+</div>
+{%- endmacro %}
+
+{% macro all_chosen(playlist_id) -%}
+<small id="vacio-{{ playlist_id }}">Ya estan todos</small>
+{%- endmacro %}
+
+{% macro whitelist_empty() -%}
+<small id="wl-vacio">Elegi artistas desde una playlist o buscalos.</small>
 {%- endmacro %}

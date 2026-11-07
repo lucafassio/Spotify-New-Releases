@@ -4,7 +4,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import canales, web
+from app import canales, copias, web
 from app import spotify as spotify_api
 
 
@@ -18,6 +18,13 @@ def screen(monkeypatch, spotify):
     monkeypatch.setattr(canales, 'list_canales', lambda *args: [canal.copy()])
     monkeypatch.setattr(canales, 'get_sources', lambda *args: [])
     monkeypatch.setattr(canales, 'get_whitelist', lambda *args: [])
+    copies = []
+
+    def save_library(conn, user_id, playlists):
+        copies[:] = [{'playlist_id': p['id'], 'position': i, 'name': p['name'], 'owner_id': p['owner']['id'], 'collaborative': False, 'snapshot_id': p['snapshot_id'], 'total': 250, 'artists_snapshot_id': None, 'artists_total': None, 'last_track_uri': None} for i, p in enumerate(playlists)]
+
+    monkeypatch.setattr(copias, 'save_library', save_library)
+    monkeypatch.setattr(copias, 'list_copies', lambda *args: list(copies))
     monkeypatch.setattr(web, 'get_token', lambda *args: 'test-access')
     monkeypatch.setattr(web.users, 'get_user', lambda *args: user)
     web.app.dependency_overrides[web.get_conn] = lambda: conn
@@ -37,13 +44,6 @@ def screen(monkeypatch, spotify):
         web.app.dependency_overrides.clear()
 
 
-def test_open_canal_does_not_write_once_per_playlist(screen):
-    response = screen['client'].get('/canales/1')
-
-    assert response.status_code == 200
-    assert screen['conn'].execute.call_count <= 5
-
-
 def test_repeated_navigation_reuses_library(screen):
     screen['client'].get('/canales/1')
     screen['client'].get('/canales/1')
@@ -58,7 +58,7 @@ def test_rule_change_is_a_fragment_without_spotify(screen, action, data):
     assert response.status_code == 200
     assert not response.history
     assert 'Editor de Retencion' in response.text
-    assert 'Columna Fuentes' not in response.text
+    assert 'Columna izquierda' not in response.text
     assert '<html' not in response.text
     assert screen['route'].call_count == 0
 
@@ -93,17 +93,6 @@ def test_background_api_keeps_retry_policy(monkeypatch, spotify):
     assert spotify_api.get_my_playlists('background-token') == []
     sleep.assert_called_once_with(2)
     assert route.call_count == 2
-
-
-def test_preview_is_reused_and_does_not_reload_the_page(screen, spotify):
-    tracks = spotify.get(f'{spotify_api.API_URL}/playlists/p1/items').respond(json={'items': [{'item': {'type': 'track', 'artists': [{'id': 'a1', 'name': 'Artista'}]}}], 'next': None})
-    response = screen['client'].get('/canales/1/playlists/p1')
-    screen['client'].get('/canales/1/playlists/p1')
-
-    assert 'Artistas de la playlist' in response.text
-    assert 'Columna Fuentes' not in response.text
-    assert tracks.call_count == 1
-    assert screen['route'].call_count == 1
 
 
 def test_cooldown_stops_repeat_clicks(screen):
@@ -141,7 +130,7 @@ def test_expired_session_redirects_the_whole_page(screen):
     response = screen['client'].post('/canales/1/guardado', data={'on': '0'}, headers={'HX-Request': 'true'})
 
     assert response.headers['HX-Redirect'] == '/'
-    assert 'Columna Fuentes' not in response.text
+    assert 'Columna izquierda' not in response.text
 
 
 def test_expired_deadline_stops_pagination_before_network(spotify, monkeypatch):

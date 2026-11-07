@@ -1,0 +1,16 @@
+{% import '_macros.html' as ui %}
+{# los ids llevan la playlist: si el User ya plego la fila, esta respuesta no encuentra nada que tocar #}
+<span id="ind-{{ open_id }}" hx-swap-oob="outerHTML">{{ 'Sin actualizar' if failed else 'Al dia' }}</span>
+{% if failed %}
+{% if never_read %}<div id="artistas-{{ open_id }}" hx-swap-oob="innerHTML"><small>No pudimos leer esta playlist. Proba mas tarde.</small></div>{% endif %}
+{% elif first_read %}
+<div id="artistas-{{ open_id }}" hx-swap-oob="innerHTML">{% for artist in remaining %}{{ ui.playlist_artist(canal.id, open_id, artist) }}{% else %}{{ ui.all_chosen(open_id) }}{% endfor %}</div>
+{% else %}
+{% for artist_id in gone %}<div id="art-{{ open_id }}-{{ artist_id }}" hx-swap-oob="delete"></div>{% endfor %}
+{% if nuevos %}
+<div id="vacio-{{ open_id }}" hx-swap-oob="delete"></div>
+<div id="nuevos-{{ open_id }}" hx-swap-oob="innerHTML"><div class="bloque" data-bloque data-n="Bloque de nuevos"><span class="eyebrow" data-bloque-count>{{ nuevos | length }} {{ 'artista nuevo' if nuevos | length == 1 else 'artistas nuevos' }}</span><div class="filas">{% for artist in nuevos %}{{ ui.playlist_artist(canal.id, open_id, artist) }}{% endfor %}</div></div></div>
+{% elif gone and not remaining %}
+<div hx-swap-oob="beforeend:#artistas-{{ open_id }}">{{ ui.all_chosen(open_id) }}</div>
+{% endif %}
+{% endif %}

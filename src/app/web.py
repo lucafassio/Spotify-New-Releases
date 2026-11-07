@@ -15,7 +15,7 @@ from psycopg.errors import LockNotAvailable, QueryCanceled
 from psycopg_pool import PoolTimeout, TooManyRequests
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import canales, entregas, runs, spotify, users
+from app import canales, copias, entregas, runs, spotify, users
 from app.config import get_env, get_shared_app
 from app.crypto import decrypt_text, encrypt_text
 from app.db import close_web_pool, connect, get_web_pool
@@ -52,6 +52,7 @@ def initial(text):
 
 templates.env.filters['hue'] = hue
 templates.env.filters['initial'] = initial
+templates.env.filters['artist_key'] = copias.artist_sort_key
 
 
 @asynccontextmanager
@@ -206,19 +207,20 @@ def get_library(conn, user):
     return library_cache.get((user['id'], 'library'), lambda: spotify.get_my_playlists(get_token(conn, user)))
 
 
-def get_preview_artists(conn, user, playlist):
+def sync_library(conn, user):
     '''
-    Reutiliza los artistas de una playlist mientras su snapshot siga vigente.
+    Revisa la biblioteca en Spotify, con el minuto de cache, y deja al dia las copias y los nombres de las Targets.
         Args:
             conn (psycopg.Connection): conexion del request
             user (dict): User de la sesion
-            playlist (dict): playlist de la biblioteca
         Returns:
-            artists (dict): artistas principales e invitados
+            playlists (list): playlists del User
     '''
-    key = (user['id'], 'artists', playlist['id'], playlist.get('snapshot_id'))
-    ttl = 300 if playlist.get('snapshot_id') else 60
-    return library_cache.get(key, lambda: spotify.get_playlist_artists(get_token(conn, user), playlist['id']), ttl)
+    playlists = get_library(conn, user)
+    copias.save_library(conn, user['id'], playlists)
+    canales.sync_target_names(conn, user['id'], playlists)
+    conn.commit()
+    return playlists
 
 
 @app.exception_handler(LoginRequired)
@@ -665,34 +667,21 @@ def health():
 RETENCION_OPTIONS = [1, 2, 4, 8, 12]
 
 
-def canal_url(canal_id, open_ids=None):
+def canal_url(canal_id, open_id=None):
     '''
-    Arma la URL de la vista de un Canal conservando las Filas de Seed Playlist desplegadas.
+    Arma la URL de la vista de un Canal conservando la Fila de playlist abierta.
         Args:
             canal_id (int): id del Canal
-            open_ids (str): ids de playlists desplegadas separados por coma
+            open_id (str): id de la playlist abierta
         Returns:
             url (str): path de la vista
     '''
     url = f'/canales/{canal_id}'
 
-    if open_ids:
-        url = f'{url}?{urlencode({"open": open_ids})}'
+    if open_id:
+        url = f'{url}?{urlencode({"open": open_id})}'
 
     return url
-
-
-def back_to_canal(form, canal_id):
-    '''
-    Redirect a la vista del Canal despues de una accion, como dejo la pantalla el User.
-        Args:
-            form (dict): formulario enviado, con open opcional
-            canal_id (int): id del Canal
-        Returns:
-            response (RedirectResponse): redirect 303
-    '''
-    response = RedirectResponse(canal_url(canal_id, form.get('open')), status_code=303)
-    return response
 
 
 def require_canal(conn, user, canal_id):
@@ -786,164 +775,380 @@ def create_canal(request: Request, user=Depends(require_user), form=Depends(read
 @app.get('/canales/{canal_id}')
 def show_canal(request: Request, canal_id, user=Depends(require_user), conn=Depends(get_conn)):
     '''Muestra la pagina completa de un Canal.'''
-    return render_canal(request, canal_id, user, conn)
-
-
-def render_canal(request, canal_id, user, conn, open_ids=None, partial=False):
-    '''
-    Vista Canal: Columna Fuentes, Columna Reglas y Columna Whitelist.
-        Args:
-            request (Request): request entrante, con open opcional
-            canal_id (str): id del Canal, tal como viene en el path
-            user (dict): User de la sesion
-            conn (psycopg.Connection): conexion del request
-        Returns:
-            response (TemplateResponse): html de la vista
-    '''
     canal = require_canal(conn, user, canal_id)
-    playlists = get_library(conn, user)
+    copies = load_copies(conn, user, canal)
+    uses_seed = canales.uses_seed(conn, canal['id'])
+    whitelist = canales.get_whitelist(conn, canal['id'])
+    rows = [dict(copy, usable=is_usable(copy, user, canal)) for copy in copies]
+    open_id = request.query_params.get('open', '')
+    opened = next((row for row in rows if row['playlist_id'] == open_id and row['usable']), None) if not uses_seed else None
+    context = canal_context(
+        request, conn, user, canal, copies,
+        section='canal',
+        rows=[row for row in rows if row['usable']] + [row for row in rows if not row['usable']],
+        uses_seed=uses_seed,
+        whitelist=whitelist,
+        open_id=opened['playlist_id'] if opened else None,
+        open_artists=visible_artists(conn, user, opened, whitelist) if opened else None,
+    )
+    response = templates.TemplateResponse(request, 'canal.html', context)
+    return response
+
+
+@app.get('/canales/{canal_id}/ajustes')
+def show_settings(request: Request, canal_id, user=Depends(require_user), conn=Depends(get_conn)):
+    '''Muestra la pagina completa de la Vista Ajustes.'''
+    return render_settings(request, canal_id, user, conn)
+
+
+def load_copies(conn, user, canal, fresh=False):
+    '''
+    Devuelve la biblioteca guardada; revisa Spotify solo si no hay nada guardado, falta la Target (puede ser recien creada) o se pide.
+        Args:
+            conn (psycopg.Connection): conexion del request
+            user (dict): User de la sesion
+            canal (dict): fila de canales
+            fresh (bool): True revisa igual, con el minuto de cache
+        Returns:
+            copies (list): filas de playlist_copies
+    '''
+    copies = copias.list_copies(conn, user['id'])
+
+    if not fresh and any(copy['playlist_id'] == canal['target_playlist_id'] for copy in copies):
+        return copies
+
+    try:
+        sync_library(conn, user)
+    except copias.READ_ERRORS:
+        # con filas guardadas la vista sigue andando; sin ninguna no hay que pintar y salta el Aviso
+        if not copies:
+            raise
+        return copies
+
+    return copias.list_copies(conn, user['id'])
+
+
+def is_usable(copy, user, canal):
+    '''
+    Dice si una playlist se puede abrir o usar de Seed en este Canal.
+        Args:
+            copy (dict): fila de playlist_copies
+            user (dict): User de la sesion
+            canal (dict): fila de canales
+        Returns:
+            usable (bool): False si es ajena no colaborativa, o la Target de este Canal (ADR 0008)
+    '''
+    # Spotify da 403 al leer items de playlists ajenas no colaborativas (feb 2026)
+    readable = copy['owner_id'] == user['spotify_user_id'] or copy['collaborative']
+    usable = bool(readable) and copy['playlist_id'] != canal['target_playlist_id']
+    return usable
+
+
+def visible_artists(conn, user, copy, whitelist):
+    '''
+    Arma los Artistas de la playlist: lo guardado menos lo que ya esta en la Columna derecha.
+        Args:
+            conn (psycopg.Connection): conexion del request
+            user (dict): User de la sesion
+            copy (dict): fila de playlist_copies
+            whitelist (list): Whitelist del Canal
+        Returns:
+            artists (list): filas en orden alfabetico, o None si la playlist nunca se leyo
+    '''
+    if copy['artists_snapshot_id'] is None:
+        return None
+
+    chosen = {artist['artist_id'] for artist in whitelist}
+    artists = copias.sorted_artists(copias.get_artists(conn, user['id'], copy['playlist_id']))
+    return [artist for artist in artists if artist['artist_id'] not in chosen]
+
+
+def canal_context(request, conn, user, canal, copies, **extra):
+    '''
+    Arma lo que comparten la Vista Canal y la Vista Ajustes.
+        Args:
+            request (Request): request entrante
+            conn (psycopg.Connection): conexion del request
+            user (dict): User de la sesion
+            canal (dict): fila de canales
+            copies (list): biblioteca guardada
+            **extra: claves propias de la vista
+        Returns:
+            context (dict): contexto para el template
+    '''
     user_canales = canales.list_canales(conn, user['id'])
-    user_canales = canales.sync_target_names(conn, user['id'], playlists, user_canales)
     canal = next((item for item in user_canales if item['id'] == canal['id']), canal)
-    conn.commit()
-
-    open_ids = [pid for pid in (open_ids if open_ids is not None else request.query_params.get('open', '')).split(',') if pid]
-    sources = canales.get_sources(conn, canal['id'])
-    seeds = {s['playlist_id']: s for s in sources if s['type'] == 'seed_playlist'}
-    followed = next((s for s in sources if s['type'] == 'followed'), None)
-    manual = next((s for s in sources if s['type'] == 'manual'), None)
-    targets = {c['target_playlist_id']: c for c in user_canales}
-
-    rows = []
-    for playlist in playlists:
-        # Spotify da 403 al leer items de playlists ajenas no colaborativas (feb 2026)
-        usable = playlist['owner']['id'] == user['spotify_user_id'] or bool(playlist.get('collaborative'))
-        source = seeds.get(playlist['id'])
-        row = {
-            'id': playlist['id'],
-            'name': playlist['name'],
-            'owner': playlist['owner'].get('display_name') or playlist['owner']['id'],
-            'usable': usable,
-            'source': source,
-            'target_of': targets.get(playlist['id']),
-            'open': playlist['id'] in open_ids,
-            'artists': None,
-        }
-
-        # desplegada: si es fuente se lee de la DB; si no, de Spotify para que el User vea que aportaria
-        if row['open'] and usable:
-            if source:
-                row['artists'] = canales.get_source_artists(conn, source['id'])
-            else:
-                found = get_preview_artists(conn, user, playlist)
-                row['artists'] = sorted(({'artist_id': k, **v} for k, v in found.items()), key=lambda a: (a['feat'], a['name'].lower()))
-
-        rows.append(row)
-
-    target = next((p for p in playlists if p['id'] == canal['target_playlist_id']), None)
     context = shell_context(
         request, conn, user,
         user_canales=user_canales,
         view=canal['id'],
         canal=canal,
-        rows=rows,
-        open_ids=','.join(open_ids),
-        followed=followed,
-        manual_artists=canales.get_source_artists(conn, manual['id']) if manual else [],
-        whitelist=canales.get_whitelist(conn, canal['id']),
         whitelist_count=canal['whitelist_count'],
-        target_found=target is not None,
+        target_found=any(copy['playlist_id'] == canal['target_playlist_id'] for copy in copies),
         retencion_options=RETENCION_OPTIONS,
+        **extra,
     )
+    return context
+
+
+def render_settings(request, canal_id, user, conn, partial=False):
+    '''
+    Vista Ajustes: Seed Playlists, Caja Playlist, Retencion, Guardado y Resumen de Canal, en lugar de las dos columnas.
+        Args:
+            request (Request): request entrante
+            canal_id (str): id del Canal, tal como viene en el path
+            user (dict): User de la sesion
+            conn (psycopg.Connection): conexion del request
+            partial (bool): True devuelve solo el Panel y la Barra lateral
+        Returns:
+            response (TemplateResponse): html de la vista
+    '''
+    canal = require_canal(conn, user, canal_id)
+    # un Canal con Seed no tiene filas que abrir: sin esto una playlist nueva recien se podria prender despues del Run
+    copies = load_copies(conn, user, canal, fresh=not partial)
+    seeds = {source['playlist_id']: source for source in canales.get_sources(conn, canal['id']) if source['type'] == 'seed_playlist'}
+    rows = [dict(copy, source=seeds.get(copy['playlist_id'])) for copy in copies if is_usable(copy, user, canal)]
+    context = canal_context(request, conn, user, canal, copies, section='ajustes', rows=rows)
     response = templates.TemplateResponse(request, '_canal_response.html' if partial else 'canal.html', context)
     return response
 
 
-def finish_canal_change(request, conn, user, canal_id, form, rules_only=False):
+def finish_settings_change(request, conn, user, canal_id):
     '''
-    Devuelve solo la parte modificada del Canal cuando el formulario usa HTMX.
+    Vuelve a la Vista Ajustes despues de prender o apagar una Seed Playlist o sus feats.
         Args:
             request (Request): request entrante
             conn (psycopg.Connection): conexion del request
-            user (dict): User autenticado
+            user (dict): User de la sesion
             canal_id (int): Canal modificado
-            form (dict): formulario con filas abiertas
-            rules_only (bool): evita cargar Fuentes al modificar Reglas
+        Returns:
+            response (Response): Panel para HTMX o redirect para formularios sin JS
+    '''
+    if request.headers.get('HX-Request') != 'true':
+        return RedirectResponse(f'/canales/{canal_id}/ajustes', status_code=303)
+    return render_settings(request, canal_id, user, conn, partial=True)
+
+
+def finish_rules_change(request, conn, user, canal_id):
+    '''
+    Devuelve solo las cajas de Retencion, Guardado y Resumen cuando el formulario usa HTMX.
+        Args:
+            request (Request): request entrante
+            conn (psycopg.Connection): conexion del request
+            user (dict): User de la sesion
+            canal_id (int): Canal modificado
         Returns:
             response (Response): fragmento o redirect para formularios sin JS
     '''
     if request.headers.get('HX-Request') != 'true':
-        return back_to_canal(form, canal_id)
-    if rules_only:
-        canal = require_canal(conn, user, canal_id)
-        user_canales = canales.list_canales(conn, user['id'])
-        count = next((item['whitelist_count'] for item in user_canales if item['id'] == canal['id']), 0)
-        context = {'canal': canal, 'whitelist_count': count, 'open_ids': form.get('open', ''), 'retencion_options': RETENCION_OPTIONS, 'flash': request.session.pop('flash', None)}
-        return templates.TemplateResponse(request, '_canal_rules_response.html', context)
-    return render_canal(request, canal_id, user, conn, form.get('open', ''), partial=True)
+        return RedirectResponse(f'/canales/{canal_id}/ajustes', status_code=303)
+    canal = require_canal(conn, user, canal_id)
+    user_canales = canales.list_canales(conn, user['id'])
+    count = next((item['whitelist_count'] for item in user_canales if item['id'] == canal['id']), 0)
+    context = {'canal': canal, 'whitelist_count': count, 'retencion_options': RETENCION_OPTIONS, 'flash': request.session.pop('flash', None)}
+    return templates.TemplateResponse(request, '_canal_rules_response.html', context)
+
+
+def find_usable_copy(conn, user, canal, playlist_id):
+    '''
+    Busca una playlist que el User puede abrir o usar de Seed en este Canal.
+        Args:
+            conn (psycopg.Connection): conexion del request
+            user (dict): User de la sesion
+            canal (dict): fila de canales
+            playlist_id (str): id de Spotify de la playlist
+        Returns:
+            copy (dict): fila de playlist_copies, o None si no se puede usar
+    '''
+    copy = copias.get_copy(conn, user['id'], playlist_id)
+    return copy if copy and is_usable(copy, user, canal) else None
+
+
+def refresh_copy(conn, user, playlist_id):
+    '''
+    Confirma contra Spotify la Copia de una playlist, sin reintentar si falla (ADR 0008).
+        Args:
+            conn (psycopg.Connection): conexion del request
+            user (dict): User de la sesion
+            playlist_id (str): id de Spotify de la playlist
+        Returns:
+            result (dict): resultado de copias.refresh; status failed si Spotify fallo o la playlist ya no esta
+    '''
+    try:
+        playlist = next((item for item in sync_library(conn, user) if item['id'] == playlist_id), None)
+        if playlist is None:
+            return copias.failed_refresh(None)
+        return copias.refresh(conn, get_token(conn, user), user['id'], playlist)
+    except (*copias.READ_ERRORS, spotify.TokenRejected) as error:
+        return copias.failed_refresh(error)
 
 
 @app.get('/canales/{canal_id}/playlists/{playlist_id}', response_class=HTMLResponse)
-def preview_playlist(request: Request, canal_id, playlist_id, user=Depends(require_user), conn=Depends(get_conn)):
-    '''Devuelve solo los artistas de la playlist que el User acaba de desplegar.'''
+def open_playlist(request: Request, canal_id, playlist_id, user=Depends(require_user), conn=Depends(get_conn)):
+    '''Abre una Fila de playlist con su copia guardada al instante; el fragmento dispara el refresco por detras.'''
     canal = require_canal(conn, user, canal_id)
-    playlist = next((item for item in get_library(conn, user) if item['id'] == playlist_id), None)
-    if playlist is None or not (playlist['owner']['id'] == user['spotify_user_id'] or playlist.get('collaborative')):
+    if canales.uses_seed(conn, canal['id']):
+        return action_failed(request, SEED_MESSAGE)
+    copy = find_usable_copy(conn, user, canal, playlist_id)
+    if copy is None:
         return action_failed(request, 'No encontramos esa playlist entre las que podes usar.')
-    source = next((item for item in canales.get_sources(conn, canal['id']) if item['type'] == 'seed_playlist' and item['playlist_id'] == playlist_id), None)
-    if source:
-        artists = canales.get_source_artists(conn, source['id'])
-    else:
-        found = get_preview_artists(conn, user, playlist)
-        artists = sorted(({'artist_id': key, **value} for key, value in found.items()), key=lambda artist: (artist['feat'], artist['name'].lower()))
-    context = {'canal': canal, 'row': {'id': playlist_id, 'artists': artists, 'source': source}, 'open_ids': request.query_params.get('open', '')}
-    return templates.TemplateResponse(request, '_playlist_artists.html', context)
+    artists = visible_artists(conn, user, copy, canales.get_whitelist(conn, canal['id']))
+    context = {'canal': canal, 'open_id': playlist_id, 'open_artists': artists, 'oob': True}
+    return templates.TemplateResponse(request, '_playlist_open.html', context)
 
 
-def toggle_open(open_ids, playlist_id):
+@app.get('/canales/{canal_id}/playlists/{playlist_id}/refrescar', response_class=HTMLResponse)
+def refresh_playlist(request: Request, canal_id, playlist_id, user=Depends(require_user), conn=Depends(get_conn)):
+    '''Confirma la copia y responde solo con el Indicador de lectura, el Bloque de nuevos y la baja de filas: la lista no se reordena.'''
+    canal = require_canal(conn, user, canal_id)
+    copy = find_usable_copy(conn, user, canal, playlist_id)
+    if copy is None or canales.uses_seed(conn, canal['id']):
+        return HTMLResponse('')
+
+    never_read = copy['artists_snapshot_id'] is None
+    result = refresh_copy(conn, user, playlist_id)
+    conn.commit()
+
+    whitelist = canales.get_whitelist(conn, canal['id'])
+    chosen = {artist['artist_id'] for artist in whitelist}
+    context = {
+        'canal': canal,
+        'open_id': playlist_id,
+        'failed': result['status'] == 'failed',
+        'never_read': never_read,
+        'first_read': result['first_read'],
+        'remaining': visible_artists(conn, user, copias.get_copy(conn, user['id'], playlist_id) or copy, whitelist) or [],
+        'nuevos': [artist for artist in result['added'] if artist['artist_id'] not in chosen],
+        'gone': [artist_id for artist_id in result['removed'] if artist_id not in chosen],
+    }
+    return templates.TemplateResponse(request, '_playlist_refresh.html', context)
+
+
+SEED_MESSAGE = 'Este Canal sigue sus Seed Playlists. Para elegir artistas a mano, apagalas en Ajustes.'
+
+
+def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, from_search=False):
     '''
-    Despliega o pliega una Fila de Seed Playlist en la lista de abiertas.
+    Responde a una Flecha de artista o al Buscador sin llamar a Spotify: solo cambia la fila, la Columna derecha y el contador, nunca todo el Panel.
         Args:
-            open_ids (str): ids abiertos separados por coma
-            playlist_id (str): fila a alternar
+            request (Request): request entrante
+            conn (psycopg.Connection): conexion del request
+            user (dict): User de la sesion
+            canal (dict): fila de canales
+            form (dict): formulario enviado, con open opcional
+            artist_id (str): id del artista movido
+            playlist_id (str): fila de donde salio; si no, la playlist abierta
+            from_search (bool): True si vino del Buscador de artistas
         Returns:
-            open_ids (str): lista nueva
+            response (Response): swaps fuera de banda, o redirect para formularios sin JS
     '''
-    ids = [pid for pid in open_ids.split(',') if pid]
-    ids = [pid for pid in ids if pid != playlist_id] if playlist_id in ids else ids + [playlist_id]
-    return ','.join(ids)
+    playlist_id = playlist_id or form.get('open')
+
+    if request.headers.get('HX-Request') != 'true':
+        return RedirectResponse(canal_url(canal['id'], playlist_id), status_code=303)
+
+    whitelist = canales.get_whitelist(conn, canal['id'])
+    copy = find_usable_copy(conn, user, canal, playlist_id) if playlist_id else None
+    in_playlist = copias.get_artists(conn, user['id'], playlist_id) if copy else {}
+    added = next((artist for artist in whitelist if artist['artist_id'] == artist_id), None)
+    chosen = {artist['artist_id'] for artist in whitelist}
+    context = {
+        'canal': canal,
+        'canales': canales.list_canales(conn, user['id']),
+        'view': canal['id'],
+        'artist_id': artist_id,
+        'added': added,
+        'whitelist_size': len(whitelist),
+        'open_id': playlist_id if artist_id in in_playlist else None,
+        'back': {'artist_id': artist_id, **in_playlist[artist_id]} if artist_id in in_playlist and added is None else None,
+        'left_empty': artist_id in in_playlist and not set(in_playlist) - chosen,
+        'from_search': from_search,
+    }
+    return templates.TemplateResponse(request, '_artista_movido.html', context)
 
 
-templates.env.globals['toggle_open'] = toggle_open
 templates.env.globals['canal_url'] = canal_url
+
+
+@app.post('/canales/{canal_id}/artistas/sumar')
+def add_artist(request: Request, canal_id, user=Depends(require_user), form=Depends(read_form), conn=Depends(get_conn)):
+    '''
+    Flecha de artista en la Columna izquierda: pasa un artista de la copia a la Lista manual, con su nombre e ISRC.
+        Args:
+            canal_id (str): id del Canal, tal como viene en el path
+            user (dict): User de la sesion
+            form (dict): playlist_id y artist_id
+            conn (psycopg.Connection): conexion del request
+        Returns:
+            response (Response): swaps fuera de banda
+    '''
+    canal = require_canal(conn, user, canal_id)
+    if canales.uses_seed(conn, canal['id']):
+        return action_failed(request, SEED_MESSAGE)
+
+    artist = copias.get_artists(conn, user['id'], form['playlist_id']).get(form['artist_id'])
+    if artist is None:
+        return action_failed(request, 'Ese artista ya no esta en esa playlist.')
+
+    canales.add_manual_artist(conn, canal['id'], form['artist_id'], artist['name'], artist['isrc'])
+    conn.commit()
+    return artist_moved(request, conn, user, canal, form, form['artist_id'], playlist_id=form['playlist_id'])
+
+
+@app.post('/canales/{canal_id}/artistas/quitar')
+def remove_artist(request: Request, canal_id, user=Depends(require_user), form=Depends(read_form), conn=Depends(get_conn)):
+    '''
+    Flecha de artista en la Columna derecha: saca un artista de la Lista manual y lo devuelve a la playlist abierta si esta en ella.
+        Args:
+            canal_id (str): id del Canal, tal como viene en el path
+            user (dict): User de la sesion
+            form (dict): artist_id y open
+            conn (psycopg.Connection): conexion del request
+        Returns:
+            response (Response): swaps fuera de banda
+    '''
+    canal = require_canal(conn, user, canal_id)
+    if canales.uses_seed(conn, canal['id']):
+        return action_failed(request, SEED_MESSAGE)
+
+    canales.remove_manual_artist(conn, canal['id'], form['artist_id'])
+    conn.commit()
+    return artist_moved(request, conn, user, canal, form, form['artist_id'])
 
 
 @app.post('/canales/{canal_id}/seeds')
 def toggle_seed(request: Request, canal_id, user=Depends(require_user), form=Depends(read_form), conn=Depends(get_conn)):
     '''
-    Prende o apaga una playlist como Seed Playlist del Canal.
+    Prende o apaga una playlist como Seed Playlist del Canal, leyendo por su Copia de playlist.
         Args:
             canal_id (str): id del Canal, tal como viene en el path
             user (dict): User de la sesion
-            form (dict): playlist_id, on (1 o 0) y open
+            form (dict): playlist_id y on (1 o 0)
             conn (psycopg.Connection): conexion del request
         Returns:
-            response (RedirectResponse): vuelta a la vista del Canal
+            response (Response): vuelta a la Vista Ajustes
     '''
     canal = require_canal(conn, user, canal_id)
     playlist_id = form['playlist_id']
 
     if form.get('on') == '1':
-        playlist = next((item for item in get_library(conn, user) if item['id'] == playlist_id), None)
-        if playlist is None or not (playlist['owner']['id'] == user['spotify_user_id'] or playlist.get('collaborative')):
+        load_copies(conn, user, canal)
+        copy = find_usable_copy(conn, user, canal, playlist_id)
+        if copy is None:
             return action_failed(request, 'No encontramos esa playlist entre las que podes usar.')
-        artists = get_preview_artists(conn, user, playlist)
-        canales.add_source(conn, canal['id'], 'seed_playlist', artists, playlist_id)
+
+        # si Spotify falla pero ya hay copia, alcanza: el Run la pone al dia porque la Seed queda sin snapshot
+        result = refresh_copy(conn, user, playlist_id)
+        copy = copias.get_copy(conn, user['id'], playlist_id)
+        if result['status'] == 'failed' and (copy is None or copy['artists_snapshot_id'] is None):
+            return action_failed(request, 'No pudimos leer esta playlist. Proba mas tarde.')
+
+        canales.add_source(conn, canal['id'], 'seed_playlist', copias.get_artists(conn, user['id'], playlist_id), playlist_id)
     else:
         canales.remove_source(conn, canal['id'], 'seed_playlist', playlist_id)
 
     conn.commit()
-    return finish_canal_change(request, conn, user, canal['id'], form)
+    return finish_settings_change(request, conn, user, canal['id'])
 
 
 @app.post('/canales/{canal_id}/feats')
@@ -953,39 +1158,15 @@ def toggle_feats(request: Request, canal_id, user=Depends(require_user), form=De
         Args:
             canal_id (str): id del Canal, tal como viene en el path
             user (dict): User de la sesion
-            form (dict): playlist_id, on (1 o 0) y open
+            form (dict): playlist_id y on (1 o 0)
             conn (psycopg.Connection): conexion del request
         Returns:
-            response (RedirectResponse): vuelta a la vista del Canal
+            response (Response): vuelta a la Vista Ajustes
     '''
     canal = require_canal(conn, user, canal_id)
     canales.set_feats(conn, canal['id'], form['playlist_id'], form.get('on') == '1')
     conn.commit()
-    return finish_canal_change(request, conn, user, canal['id'], form)
-
-
-@app.post('/canales/{canal_id}/follows')
-def toggle_follows(request: Request, canal_id, user=Depends(require_user), form=Depends(read_form), conn=Depends(get_conn)):
-    '''
-    Prende o apaga los artistas seguidos como Artist Source.
-        Args:
-            canal_id (str): id del Canal, tal como viene en el path
-            user (dict): User de la sesion
-            form (dict): on (1 o 0) y open
-            conn (psycopg.Connection): conexion del request
-        Returns:
-            response (RedirectResponse): vuelta a la vista del Canal
-    '''
-    canal = require_canal(conn, user, canal_id)
-
-    if form.get('on') == '1':
-        artists = library_cache.get((user['id'], 'followed'), lambda: spotify.get_followed_artists(get_token(conn, user)))
-        canales.add_source(conn, canal['id'], 'followed', artists)
-    else:
-        canales.remove_source(conn, canal['id'], 'followed')
-
-    conn.commit()
-    return finish_canal_change(request, conn, user, canal['id'], form)
+    return finish_settings_change(request, conn, user, canal['id'])
 
 
 @app.get('/canales/{canal_id}/buscar', response_class=HTMLResponse)
@@ -993,7 +1174,7 @@ def search_artists(request: Request, canal_id, user=Depends(require_user), conn=
     '''
     Resultados del Buscador de artistas, como fragmento para HTMX.
         Args:
-            request (Request): request entrante, con q y open
+            request (Request): request entrante, con q
             canal_id (str): id del Canal, tal como viene en el path
             user (dict): User de la sesion
             conn (psycopg.Connection): conexion del request
@@ -1004,12 +1185,11 @@ def search_artists(request: Request, canal_id, user=Depends(require_user), conn=
     query = request.query_params.get('q', '').strip()
     results = []
 
-    if query:
-        manual = canales.find_source(conn, canal['id'], 'manual')
-        chosen = {a['artist_id'] for a in canales.get_source_artists(conn, manual)} if manual else set()
-        results = [a for a in spotify.search_artists(get_token(conn, user), query) if a['id'] not in chosen]
+    if query and not canales.uses_seed(conn, canal['id']):
+        chosen = {artist['artist_id'] for artist in canales.get_whitelist(conn, canal['id'])}
+        results = [artist for artist in spotify.search_artists(get_token(conn, user), query) if artist['id'] not in chosen]
 
-    context = {'canal': canal, 'query': query, 'results': results, 'open_ids': request.query_params.get('open', '')}
+    context = {'canal': canal, 'query': query, 'results': results}
     response = templates.TemplateResponse(request, '_busqueda.html', context)
     return response
 
@@ -1017,37 +1197,22 @@ def search_artists(request: Request, canal_id, user=Depends(require_user), conn=
 @app.post('/canales/{canal_id}/manual')
 def add_manual(request: Request, canal_id, user=Depends(require_user), form=Depends(read_form), conn=Depends(get_conn)):
     '''
-    Suma un artista a mano al Canal.
+    Buscador de artistas: suma un artista a la Lista manual por su nombre, sin ISRC (ADR 0007).
         Args:
             canal_id (str): id del Canal, tal como viene en el path
             user (dict): User de la sesion
             form (dict): artist_id, name y open
             conn (psycopg.Connection): conexion del request
         Returns:
-            response (RedirectResponse): vuelta a la vista del Canal
+            response (Response): swaps fuera de banda
     '''
     canal = require_canal(conn, user, canal_id)
+    if canales.uses_seed(conn, canal['id']):
+        return action_failed(request, SEED_MESSAGE)
+
     canales.add_manual_artist(conn, canal['id'], form['artist_id'], form.get('name', ''))
     conn.commit()
-    return finish_canal_change(request, conn, user, canal['id'], form)
-
-
-@app.post('/canales/{canal_id}/manual/quitar')
-def remove_manual(request: Request, canal_id, user=Depends(require_user), form=Depends(read_form), conn=Depends(get_conn)):
-    '''
-    Saca un artista de la lista manual del Canal.
-        Args:
-            canal_id (str): id del Canal, tal como viene en el path
-            user (dict): User de la sesion
-            form (dict): artist_id y open
-            conn (psycopg.Connection): conexion del request
-        Returns:
-            response (RedirectResponse): vuelta a la vista del Canal
-    '''
-    canal = require_canal(conn, user, canal_id)
-    canales.remove_manual_artist(conn, canal['id'], form['artist_id'])
-    conn.commit()
-    return finish_canal_change(request, conn, user, canal['id'], form)
+    return artist_moved(request, conn, user, canal, form, form['artist_id'], from_search=True)
 
 
 @app.post('/canales/{canal_id}/retencion')
@@ -1058,10 +1223,10 @@ def set_retencion(request: Request, canal_id, user=Depends(require_user), form=D
             request (Request): request entrante
             canal_id (str): id del Canal, tal como viene en el path
             user (dict): User de la sesion
-            form (dict): retencion (numero o acum) y open
+            form (dict): retencion (numero o acum)
             conn (psycopg.Connection): conexion del request
         Returns:
-            response (RedirectResponse): vuelta a la vista del Canal
+            response (Response): cajas de la Vista Ajustes, o redirect a ella sin JS
     '''
     canal = require_canal(conn, user, canal_id)
     value = form.get('retencion')
@@ -1073,7 +1238,7 @@ def set_retencion(request: Request, canal_id, user=Depends(require_user), form=D
         request.session['flash'] = str(error)
 
     conn.commit()
-    return finish_canal_change(request, conn, user, canal['id'], form, rules_only=True)
+    return finish_rules_change(request, conn, user, canal['id'])
 
 
 @app.post('/canales/{canal_id}/guardado')
@@ -1083,15 +1248,15 @@ def set_guardado(request: Request, canal_id, user=Depends(require_user), form=De
         Args:
             canal_id (str): id del Canal, tal como viene en el path
             user (dict): User de la sesion
-            form (dict): on (1 o 0) y open
+            form (dict): on (1 o 0)
             conn (psycopg.Connection): conexion del request
         Returns:
-            response (RedirectResponse): vuelta a la vista del Canal
+            response (Response): cajas de la Vista Ajustes, o redirect a ella sin JS
     '''
     canal = require_canal(conn, user, canal_id)
     canales.set_guardado(conn, canal['id'], form.get('on') == '1')
     conn.commit()
-    return finish_canal_change(request, conn, user, canal['id'], form, rules_only=True)
+    return finish_rules_change(request, conn, user, canal['id'])
 
 
 @app.post('/canales/{canal_id}/desvincular')

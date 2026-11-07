@@ -12,7 +12,7 @@ import httpx
 API_URL = 'https://api.spotify.com/v1'
 ACCOUNTS_URL = 'https://accounts.spotify.com'
 
-# playlists (ADR 0003/0005), Guardado y borrar la Target al desvincular (ADR 0005), follows como Artist Source
+# playlists (ADR 0003/0005), Guardado y borrar la Target al desvincular (ADR 0005)
 SCOPES = [
     'playlist-read-private',
     'playlist-read-collaborative',
@@ -20,7 +20,6 @@ SCOPES = [
     'playlist-modify-public',
     'user-library-read',
     'user-library-modify',
-    'user-follow-read',
 ]
 
 
@@ -326,14 +325,13 @@ def is_quota_exceeded(response):
     return exceeded
 
 
-def get_pages(access_token, path, params, key=None):
+def get_pages(access_token, path, params):
     '''
     Recorre una paginacion de Spotify siguiendo `next` hasta el final.
         Args:
             access_token (str): access token vigente
             path (str): path de la primera pagina
             params (dict): params de la primera pagina; las siguientes los traen en `next`
-            key (str): clave que envuelve al paging object, ej: artists en /me/following
         Returns:
             items (list): items de todas las paginas
     '''
@@ -342,7 +340,6 @@ def get_pages(access_token, path, params, key=None):
 
     while url:
         page = call_api('GET', access_token, url, params=params).json()
-        page = page[key] if key else page
         items.extend(page['items'])
         url = page.get('next')
         params = None
@@ -362,20 +359,60 @@ def get_my_playlists(access_token):
     return playlists
 
 
-def get_playlist_artists(access_token, playlist_id):
+def get_playlist_entries(access_token, playlist_id, offset=0):
     '''
-    Junta los artistas de una playlist propia o colaborativa: el primero de cada track es principal, el resto feats.
+    Lee los items de una playlist propia o colaborativa, desde el principio o desde un offset.
         Args:
             access_token (str): access token vigente
             playlist_id (str): id de Spotify de la playlist
+            offset (int): posicion del primer item a leer
+        Returns:
+            entries (list): items de GET /playlists/{id}/items
+    '''
+    params = {'limit': 50, 'offset': offset} if offset else {'limit': 50}
+    entries = get_pages(access_token, f'/playlists/{playlist_id}/items', params)
+    return entries
+
+
+def get_entry_track(entry):
+    '''
+    Track de un item de playlist; feb 2026 renombro track a item.
+        Args:
+            entry (dict): item de GET /playlists/{id}/items
+        Returns:
+            track (dict): track o episodio, o None si Spotify no lo devuelve
+    '''
+    track = entry.get('item') or entry.get('track')
+    return track
+
+
+def get_entry_uri(entry):
+    '''
+    URI de un item de playlist, para reconocerlo despues aunque no aporte artistas.
+        Args:
+            entry (dict): item de GET /playlists/{id}/items
+        Returns:
+            uri (str): uri del track o episodio, o None si Spotify no lo devuelve
+    '''
+    track = get_entry_track(entry)
+    uri = track.get('uri') if track else None
+    return uri
+
+
+def collect_artists(entries, artists=None):
+    '''
+    Junta los artistas de items de playlist: el primero de cada track es principal, el resto feats.
+        Args:
+            entries (list): items de GET /playlists/{id}/items
+            artists (dict): artistas ya conocidos, a los que se suman estos
         Returns:
             artists (dict): artist_id -> {name, feat, isrc}; feat es False si fue principal en algun track, isrc es de un track donde figura
     '''
-    artists = {}
+    artists = {} if artists is None else artists
 
-    for entry in get_pages(access_token, f'/playlists/{playlist_id}/items', {'limit': 50}):
-        # feb 2026 renombro track a item; episodios y archivos locales no aportan artistas
-        track = entry.get('item') or entry.get('track')
+    for entry in entries:
+        # episodios y archivos locales no aportan artistas
+        track = get_entry_track(entry)
         if not track or track.get('type') != 'track' or track.get('is_local'):
             continue
 
@@ -393,19 +430,6 @@ def get_playlist_artists(access_token, playlist_id):
             elif known['isrc'] is None:
                 known['isrc'] = isrc
 
-    return artists
-
-
-def get_followed_artists(access_token):
-    '''
-    Lista los artistas que el User sigue en Spotify.
-        Args:
-            access_token (str): access token vigente
-        Returns:
-            artists (dict): artist_id -> {name, feat, isrc}; feat siempre False y sin isrc
-    '''
-    items = get_pages(access_token, '/me/following', {'type': 'artist', 'limit': 50}, key='artists')
-    artists = {artist['id']: {'name': artist['name'], 'feat': False, 'isrc': None} for artist in items}
     return artists
 
 
