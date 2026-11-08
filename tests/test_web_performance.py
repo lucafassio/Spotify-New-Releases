@@ -36,6 +36,8 @@ def screen(monkeypatch, spotify):
         spotify_api.clear_cooldowns()
 
     route = spotify.get(f'{spotify_api.API_URL}/me/playlists').respond(json={'items': library, 'next': None})
+    # sin login de por medio la sesion no trae la foto de perfil y la pide una vez
+    spotify.get(f'{spotify_api.API_URL}/me').respond(json={'id': user['spotify_user_id'], 'images': []})
 
     try:
         with TestClient(web.app) as client:

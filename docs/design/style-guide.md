@@ -61,8 +61,13 @@ degradado con la inicial grande en negro translucido. El tono del Canal tine su 
 Si Spotify tiene portada de la playlist (la del Canal es la de su Target), va encima del
 degradado; el degradado queda de fondo si no hay o no carga.
 
-**Avatares**: circulo con el tono del nombre y la inicial; encima, la foto del artista de Deezer
-si el Run ya lo vinculo, o la de Spotify en los resultados del Buscador de artistas.
+**Avatares**: circulo con el tono del nombre y la inicial; encima va siempre una foto: la de
+Spotify en el Buscador de artistas, la de Deezer si el Run ya vinculo al artista, y si no la
+busca `/artistas/foto` en Deezer por ISRC o nombre. La inicial queda si no hay foto o no carga.
+El avatar del Perfil lleva la foto de perfil de Spotify del User.
+
+**Rueda**: los paneles con scroll corren 70% de lo que pide la rueda y frenan rapido, con
+menos deslizamiento que el del navegador.
 
 ## Tipografia
 
@@ -95,7 +100,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Interruptor | Switch on/off (verde prendido) |
 | Selector | Fila de pildoras donde una queda blanca |
 | Aviso | Caja de texto con fondo: neutra, ok, warn, crit |
-| Fila de artista | Avatar (foto del artista o inicial), nombre y Flecha de artista, a lo ancho de la columna |
+| Fila de artista | Avatar con foto, nombre y Flecha de artista, a lo ancho de la columna. Con Flecha, toda la fila es el boton |
 | Flecha de artista | A la derecha en la Columna izquierda (suma a la Lista manual), a la izquierda en la Columna derecha (saca de la Lista manual) |
 | Portada | Cuadrado con la portada de Spotify, o degradado e inicial si no hay |
 | Barras | Grafico de barras horizontal: nombre, barra verde, numero |
@@ -129,7 +134,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Lista de Canales | Canales del User con el +; scrollea sola |
 | Fila de Canal | Portada, nombre y cantidad de artistas |
 | Boton Nuevo Canal | El + de la Lista de Canales |
-| Perfil | Abajo de la Barra lateral: avatar, nombre, Salir |
+| Perfil | Abajo de la Barra lateral: avatar con la foto del User, nombre, Salir |
 | Aviso de desconexion | Aviso crit arriba del Panel si el User esta Desconectado, con "Volver a conectar" |
 | Aviso de reconexion | Aviso neutro arriba del Panel, una sola vez despues de reconectar: desde cuando estuvo Desconectado |
 | Aviso de accion | Aviso ok arriba del Panel, una sola vez, despues de una accion (ej: Canal borrado) o si Spotify fallo |
@@ -153,6 +158,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Bloque de nuevos | Al fondo de la fila abierta, apartado: "2 artistas nuevos" y sus Filas de artista en orden alfabetico. Dura hasta plegar la playlist; al volver a abrirla se mezclan con el resto |
 | Columna derecha | "Quienes entran": la Whitelist del Canal en Filas de artista, en orden alfabetico. Vacia: "Elegi artistas desde una playlist o buscalos." |
 | Buscador de artistas | Arriba de la Columna derecha; suma a la Lista manual. No aparece si el Canal usa Seed Playlists |
+| Resultado agregado | Resultado del Buscador de un artista que ya esta en el Canal: apagado, sin boton y con la etiqueta "added" |
 | Aviso de Seed | En la Columna derecha si el Canal usa Seed Playlists, en lugar del Buscador: las filas no tienen flecha y el aviso lleva a Ajustes |
 
 ### Vista Ajustes

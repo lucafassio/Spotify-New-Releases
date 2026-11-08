@@ -53,7 +53,27 @@ def initial(text):
 templates.env.filters['hue'] = hue
 templates.env.filters['initial'] = initial
 templates.env.filters['artist_key'] = copias.artist_sort_key
-templates.env.filters['artist_photo'] = deezer.get_picture_url
+def artist_photo(artist):
+    '''
+    Foto para el avatar de un artista: la de Spotify si vino, la de Deezer si el Run lo vinculo, si no la busca /artistas/foto.
+        Args:
+            artist (dict): fila con name y opcionales image, deezer_artist_id e isrc
+        Returns:
+            url (str): url de la foto, o None sin nombre para buscarlo
+    '''
+    if artist.get('image'):
+        return artist['image']
+    if artist.get('deezer_artist_id'):
+        return deezer.get_picture_url(artist['deezer_artist_id'])
+    if not artist.get('name'):
+        return None
+
+    params = {'name': artist['name'], 'isrc': artist['isrc']} if artist.get('isrc') else {'name': artist['name']}
+    url = f'/artistas/foto?{urlencode(params)}'
+    return url
+
+
+templates.env.filters['artist_photo'] = artist_photo
 
 
 @asynccontextmanager
@@ -338,6 +358,31 @@ def get_cap_warnings(user_canales):
     return warnings
 
 
+# lado del avatar del Perfil al doble, para pantallas de alta densidad
+PROFILE_SIZE = 64
+
+
+def get_profile_image(request, conn, user):
+    '''
+    Foto de perfil del User: se guarda en la sesion al loguear, y una sesion de antes la pide una sola vez a GET /me.
+        Args:
+            request (Request): request entrante
+            conn (psycopg.Connection): conexion del request
+            user (dict): fila de users
+        Returns:
+            url (str): url de la foto, o None si no tiene o no se pudo leer
+    '''
+    if 'avatar' not in request.session and user['disconnected_at'] is None:
+        try:
+            profile = spotify.get_current_user(get_token(conn, user))
+        except (*copias.READ_ERRORS, spotify.TokenRejected, users.UserDisconnected):
+            return None
+        request.session['avatar'] = spotify.get_image_url(profile.get('images'), PROFILE_SIZE) or ''
+
+    url = request.session.get('avatar') or None
+    return url
+
+
 def shell_context(request, conn, user, **extra):
     '''
     Arma lo que necesita todo el dashboard: Barra lateral, Perfil y Avisos.
@@ -354,6 +399,7 @@ def shell_context(request, conn, user, **extra):
         user_canales = canales.list_canales(conn, user['id'])
     context = {
         'display_name': request.session.get('display_name') or user['spotify_user_id'],
+        'avatar': get_profile_image(request, conn, user),
         'disconnected': user['disconnected_at'] is not None,
         'reconnected_since': request.session.pop('reconnected_since', None),
         'flash': request.session.pop('flash', None),
@@ -624,6 +670,7 @@ def callback(request: Request, conn=Depends(get_conn)):
     library_cache.clear(login['user_id'])
     request.session['user_id'] = login['user_id']
     request.session['display_name'] = profile.get('display_name') or profile['id']
+    request.session['avatar'] = spotify.get_image_url(profile.get('images'), PROFILE_SIZE) or ''
 
     # el Aviso de reconexion se muestra una sola vez, en la pagina que sigue al callback (#19)
     if login['disconnected_at']:
@@ -1025,6 +1072,8 @@ def refresh_playlist(request: Request, canal_id, playlist_id, user=Depends(requi
     return templates.TemplateResponse(request, '_playlist_refresh.html', context)
 
 
+SPOTIFY_IMAGES = 'https://i.scdn.co/'
+
 SEED_MESSAGE = 'Este Canal sigue sus Seed Playlists. Para elegir artistas a mano, apagalas en Ajustes.'
 
 
@@ -1053,6 +1102,13 @@ def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, 
     in_playlist = copias.get_artists(conn, user['id'], playlist_id) if copy else {}
     added = next((artist for artist in whitelist if artist['artist_id'] == artist_id), None)
     chosen = {artist['artist_id'] for artist in whitelist}
+
+    # la foto que ya mostraba el Buscador; solo de Spotify, el form lo arma el navegador
+    search_image = form.get('image', '') if from_search else ''
+    search_image = search_image if search_image.startswith(SPOTIFY_IMAGES) else None
+    if added and search_image:
+        added = dict(added, image=search_image)
+
     context = {
         'canal': canal,
         'canales': canales.list_canales(conn, user['id']),
@@ -1064,6 +1120,7 @@ def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, 
         'back': copias.add_deezer_ids(conn, [{'artist_id': artist_id, **in_playlist[artist_id]}])[0] if artist_id in in_playlist and added is None else None,
         'left_empty': artist_id in in_playlist and not set(in_playlist) - chosen,
         'from_search': from_search,
+        'search_image': search_image,
     }
     return templates.TemplateResponse(request, '_artista_movido.html', context)
 
@@ -1187,11 +1244,41 @@ def search_artists(request: Request, canal_id, user=Depends(require_user), conn=
     results = []
 
     if query and not canales.uses_seed(conn, canal['id']):
+        # los que ya entran se muestran apagados para que el User vea que estan, sin poder sumarlos de nuevo
         chosen = {artist['artist_id'] for artist in canales.get_whitelist(conn, canal['id'])}
-        results = [artist for artist in spotify.search_artists(get_token(conn, user), query) if artist['id'] not in chosen]
+        results = [dict(artist, added=artist['id'] in chosen) for artist in spotify.search_artists(get_token(conn, user), query)]
 
     context = {'canal': canal, 'query': query, 'results': results}
     response = templates.TemplateResponse(request, '_busqueda.html', context)
+    return response
+
+
+# un artista sin foto vuelve a buscarse al dia siguiente; una encontrada no cambia en la semana
+PHOTO_MISSING_AGE = 24 * 60 * 60
+PHOTO_FOUND_AGE = 7 * 24 * 60 * 60
+
+
+@app.get('/artistas/foto')
+def find_artist_photo(request: Request):
+    '''
+    Foto de un artista que el Run todavia no vinculo: la busca en Deezer y redirige. No toca la base, asi cada avatar no ocupa el pool.
+        Args:
+            request (Request): request entrante, con name e isrc opcional
+        Returns:
+            response (Response): redirect a la foto, o 404 para que quede la inicial
+    '''
+    if not request.session.get('user_id'):
+        return PlainTextResponse('', status_code=401)
+
+    name = request.query_params.get('name', '').strip()
+    try:
+        url = deezer.find_picture_url(name, request.query_params.get('isrc') or None) if name else None
+    except (httpx.HTTPError, deezer.DeezerError):
+        return PlainTextResponse('', status_code=503)
+
+    if url is None:
+        return PlainTextResponse('', status_code=404, headers={'Cache-Control': f'private, max-age={PHOTO_MISSING_AGE}'})
+    response = RedirectResponse(url, status_code=302, headers={'Cache-Control': f'private, max-age={PHOTO_FOUND_AGE}'})
     return response
 
 

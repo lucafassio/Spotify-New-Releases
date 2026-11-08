@@ -1,12 +1,7 @@
 {% import '_macros.html' as ui %}
 {% if query and results %}
 <div class="results">
-  {% for artist in results %}
-  <form id="res-{{ artist.id }}" method="post" action="/canales/{{ canal.id }}/manual" hx-post="/canales/{{ canal.id }}/manual" hx-swap="none" hx-disabled-elt="find button">
-    <input type="hidden" name="artist_id" value="{{ artist.id }}"><input type="hidden" name="name" value="{{ artist.name }}">
-    <button>{{ ui.avatar(artist.name, 26, artist.image) }}{{ artist.name }}</button>
-  </form>
-  {% endfor %}
+  {% for artist in results %}{{ ui.search_result(canal.id, artist) }}{% endfor %}
 </div>
 {% elif query %}
 <small>No encontre "{{ query }}".</small>

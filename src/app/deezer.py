@@ -125,14 +125,14 @@ def get_picture_url(artist_id):
     return url
 
 
-def find_artist_by_isrc(isrc, name):
+def match_artist_by_isrc(isrc, name):
     '''
     Busca en Deezer el track de un ISRC y devuelve el artista del track con ese nombre.
         Args:
             isrc (str): ISRC de un Track donde figura el artista
             name (str): nombre del artista en Spotify
         Returns:
-            artist_id (int): id de Deezer del artista, o None si no aparece
+            artist (dict): artista de Deezer con id y fotos, o None si no aparece
     '''
     track = call_api(f'/track/isrc:{isrc}')
     if track is None:
@@ -141,17 +141,17 @@ def find_artist_by_isrc(isrc, name):
     # el ISRC identifica el track; el artista lo elegimos por nombre entre principal e invitados
     candidates = track.get('contributors') or [track['artist']]
     wanted = normalize_name(name)
-    artist_id = next((artist['id'] for artist in candidates if normalize_name(artist['name']) == wanted), None)
-    return artist_id
+    artist = next((artist for artist in candidates if normalize_name(artist['name']) == wanted), None)
+    return artist
 
 
-def find_artist_by_name(name):
+def match_artist_by_name(name):
     '''
     Busca un artista por nombre exacto; entre homonimos gana el de mas fans.
         Args:
             name (str): nombre del artista en Spotify
         Returns:
-            artist_id (int): id de Deezer del artista, o None si ninguno coincide
+            artist (dict): artista de Deezer con id y fotos, o None si ninguno coincide
     '''
     data = call_api('/search/artist', {'q': name, 'limit': 10})
     wanted = normalize_name(name)
@@ -160,8 +160,51 @@ def find_artist_by_name(name):
     if not exact:
         return None
 
-    artist_id = max(exact, key=lambda artist: artist.get('nb_fan', 0))['id']
-    return artist_id
+    artist = max(exact, key=lambda artist: artist.get('nb_fan', 0))
+    return artist
+
+
+def find_artist_by_isrc(isrc, name):
+    '''
+    Id de Deezer del artista de un ISRC con ese nombre.
+        Args:
+            isrc (str): ISRC de un Track donde figura el artista
+            name (str): nombre del artista en Spotify
+        Returns:
+            artist_id (int): id de Deezer del artista, o None si no aparece
+    '''
+    artist = match_artist_by_isrc(isrc, name)
+    return artist['id'] if artist else None
+
+
+def find_artist_by_name(name):
+    '''
+    Id de Deezer del artista con ese nombre exacto.
+        Args:
+            name (str): nombre del artista en Spotify
+        Returns:
+            artist_id (int): id de Deezer del artista, o None si ninguno coincide
+    '''
+    artist = match_artist_by_name(name)
+    return artist['id'] if artist else None
+
+
+def find_picture_url(name, isrc=None):
+    '''
+    Foto chica de un artista que el Run todavia no vinculo, buscandolo como lo haria el Run: ISRC y si no nombre.
+        Args:
+            name (str): nombre del artista en Spotify
+            isrc (str): ISRC de un Track suyo, o None
+        Returns:
+            url (str): url de la foto de 56 px, o None si no aparece o no tiene foto
+    '''
+    artist = (match_artist_by_isrc(isrc, name) if isrc else None) or match_artist_by_name(name)
+    url = (artist or {}).get('picture_small')
+
+    # sin foto Deezer arma la url con el hash vacio, que muestra una silueta generica
+    if not url or '/artist//' in url:
+        return None
+    return url
 
 
 def normalize_name(name):

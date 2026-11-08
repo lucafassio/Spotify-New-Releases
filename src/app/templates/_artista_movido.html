@@ -2,7 +2,7 @@
 {% if added %}
 <div id="wl-vacio" hx-swap-oob="delete"></div>
 <div hx-swap-oob="beforeend:#whitelist-filas">{{ ui.whitelist_row(canal.id, added, true, open_id) }}</div>
-{% if from_search %}<div id="res-{{ artist_id }}" hx-swap-oob="delete"></div>{% endif %}
+{% if from_search %}{{ ui.search_result(canal.id, {'id': artist_id, 'name': added.name, 'image': search_image, 'added': true}, oob=true) }}{% endif %}
 {% if open_id %}<div id="art-{{ open_id }}-{{ artist_id }}" hx-swap-oob="delete"></div>{% endif %}
 {% if left_empty %}<div hx-swap-oob="beforeend:#artistas-{{ open_id }}">{{ ui.all_chosen(open_id) }}</div>{% endif %}
 {% else %}

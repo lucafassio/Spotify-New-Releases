@@ -23,6 +23,7 @@
     .side-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 8px 6px 16px; }
     .side-head .btn { font-size: 20px; line-height: 1; padding: 2px 10px; }
     .perfil { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--linea); }
+    .perfil .avatar { width: 32px; height: 32px; font-size: 12px; }
     .main { display: grid; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; }
     .head { display: flex; align-items: center; gap: 16px; padding: 16px 20px; background: linear-gradient(90deg, hsl(var(--h, 140) 45% 20%) 0%, var(--superficie) 70%); border-radius: var(--r-l) var(--r-l) 0 0; position: relative; }
     .head h1 { font-size: 34px; font-weight: 900; font-stretch: 80%; letter-spacing: -0.02em; }
@@ -64,16 +65,21 @@
     .cover span { font-family: var(--display); font-weight: 900; font-stretch: 70%; color: rgba(0,0,0,.55); line-height: .8; padding: 6%; }
     .avatar { flex: none; position: relative; overflow: hidden; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 11px; color: rgba(0,0,0,.7); background: hsl(var(--h, 140) 55% 62%); }
     .filas { display: flex; flex-direction: column; gap: 2px; }
-    .fila { display: flex; align-items: center; gap: 10px; padding: 4px 6px; border-radius: var(--r-s); font-weight: 600; font-size: 13px; }
+    .fila { position: relative; display: flex; align-items: center; gap: 10px; padding: 4px 6px; border-radius: var(--r-s); font-weight: 600; font-size: 13px; }
     .fila:hover { background: var(--elevada); }
     .flecha { flex: none; width: 28px; height: 28px; border: 0; border-radius: 50%; background: none; color: var(--texto-3); font-size: 16px; line-height: 1; padding: 0; }
-    .flecha:hover { background: var(--elevada-2); color: var(--verde); }
+    .flecha:hover, .fila:hover .flecha { background: var(--elevada-2); color: var(--verde); }
     .flecha:disabled { opacity: .4; cursor: wait; }
+    /* la fila entera es la Flecha de artista: el boton se estira por detras sin cambiar de tamanio */
+    .flecha::after { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: var(--r-s); cursor: pointer; }
+    .flecha:disabled::after { cursor: wait; }
     .bloque { margin: 0 12px 12px 12px; padding-top: 10px; border-top: 1px solid var(--linea); display: flex; flex-direction: column; gap: 6px; }
     .bloque[hidden] { display: none; }
     .results { display: flex; flex-direction: column; background: var(--elevada); border-radius: var(--r-m); padding: 4px; }
-    .results button { border: 0; background: none; text-align: left; padding: 6px 8px; border-radius: var(--r-s); display: flex; gap: 10px; align-items: center; font-weight: 600; width: 100%; }
-    .results button:hover { background: var(--elevada-2); }
+    .results .res { border: 0; background: none; text-align: left; padding: 6px 8px; border-radius: var(--r-s); display: flex; gap: 10px; align-items: center; font-weight: 600; width: 100%; }
+    .results button.res:hover { background: var(--elevada-2); }
+    .results .res.added { opacity: .45; }
+    .tag { flex: none; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: var(--elevada-2); color: var(--texto-2); }
 
     .cols { display: grid; gap: 8px; padding: 8px; min-height: 0; grid-row: 3; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
     .col { background: var(--negro); border-radius: var(--r-m); min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
@@ -133,7 +139,7 @@
       {% include '_canal_nav.html' %}
     </div>
     <div class="perfil" data-n="Perfil">
-      <span class="avatar">{{ display_name[:2] | upper }}</span>
+      <span class="avatar">{{ display_name[:2] | upper }}{{ ui.picture(avatar) }}</span>
       <div class="grow"><b>{{ display_name }}</b></div>
       <form method="post" action="/logout"><button class="btn fantasma chico">Salir</button></form>
     </div>

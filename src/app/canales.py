@@ -326,19 +326,22 @@ def recalc_whitelist(conn, canal_id):
 
 def get_whitelist(conn, canal_id):
     '''
-    Lista la Whitelist del Canal con el nombre de cada artista y su id de Deezer para la foto.
+    Lista la Whitelist del Canal con el nombre de cada artista, y su id de Deezer y un ISRC para la foto.
         Args:
             conn (psycopg.Connection): conexion abierta
             canal_id (int): id del Canal
         Returns:
-            whitelist (list): filas con artist_id, name, added_at y deezer_artist_id, en orden alfabetico
+            whitelist (list): filas con artist_id, name, isrc, added_at y deezer_artist_id, en orden alfabetico
     '''
     whitelist = conn.cursor(row_factory=dict_row).execute(
         '''
-        SELECT w.artist_id, w.added_at, d.deezer_artist_id,
-            (SELECT sa.name FROM source_artists sa JOIN artist_sources s ON s.id = sa.artist_source_id
-             WHERE s.canal_id = w.canal_id AND sa.artist_id = w.artist_id LIMIT 1) AS name
-        FROM whitelist_artists w LEFT JOIN deezer_artists d ON d.spotify_artist_id = w.artist_id
+        SELECT w.artist_id, w.added_at, d.deezer_artist_id, sa.name, sa.isrc
+        FROM whitelist_artists w
+        LEFT JOIN LATERAL (
+            SELECT sa.name, sa.isrc FROM source_artists sa JOIN artist_sources s ON s.id = sa.artist_source_id
+            WHERE s.canal_id = w.canal_id AND sa.artist_id = w.artist_id ORDER BY sa.isrc NULLS LAST LIMIT 1
+        ) sa ON true
+        LEFT JOIN deezer_artists d ON d.spotify_artist_id = w.artist_id
         WHERE w.canal_id = %s
         ''',
         (canal_id,),

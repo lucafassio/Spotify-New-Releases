@@ -1,12 +1,17 @@
 import uuid
+from types import SimpleNamespace
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
 from app import canales, web
 from app import spotify as spotify_api
+from app.deezer import API_URL as DEEZER_URL
 from app.spotify import API_URL
-from test_web_canales import logged, playlist  # noqa: F401
+from app.web import get_conn
+from test_web import start_login
+from test_web_canales import TOKEN_URL, logged, playlist  # noqa: F401
 
 
 def uid(prefix):
@@ -214,7 +219,7 @@ def test_buscador_adds_by_name_without_isrc(canal, db, spotify):
     response = canal['client'].post(f'/canales/{canal["canal_id"]}/manual', data={'artist_id': 'duki', 'name': 'Duki', 'open': canal['pid']}, headers={'HX-Request': 'true'})
 
     assert db.execute('SELECT sa.isrc FROM source_artists sa JOIN artist_sources s ON s.id = sa.artist_source_id WHERE s.canal_id = %s', (canal['canal_id'],)).fetchone()[0] is None
-    assert 'id="res-duki" hx-swap-oob="delete"' in response.text
+    assert 'id="res-duki" class="res added" hx-swap-oob="true"' in response.text
     assert f'id="art-{canal["pid"]}-duki" hx-swap-oob="delete"' in response.text
     assert 'Ya estan todos' in response.text
 
@@ -672,17 +677,19 @@ def test_covers_show_the_spotify_image_over_the_gradient(canal, db, spotify):
     assert text.count('<img') == 4
 
 
-def test_artist_photo_comes_from_deezer_once_linked(canal, db, spotify):
+def test_every_artist_has_a_photo_linked_or_searched(canal, db, spotify):
     linked, unlinked = uid('Linked'), uid('Unlinked')
     db.execute('INSERT INTO deezer_artists (spotify_artist_id, deezer_artist_id, matched_by) VALUES (%s, 27, %s)', (linked.lower(), 'isrc'))
     db.commit()
-    read_once(canal, spotify, [entry('t1', linked), entry('t2', unlinked)])
+    read_once(canal, spotify, [entry('t1', linked), entry('t2', unlinked, isrc='AR9')])
     photo = 'src="https://api.deezer.com/artist/27/image?size=small"'
 
     fragment = canal['client'].get(urls(canal)[0]).text
 
+    # el vinculado va directo a Deezer; el otro lo busca la web por ISRC
     assert fragment.count(photo) == 1
-    assert fragment.count('<img') == 1
+    assert f'src="/artistas/foto?name={unlinked}&amp;isrc=AR9"' in fragment
+    assert fragment.count('<img') == 2
 
     moved = canal['client'].post(f'/canales/{canal["canal_id"]}/artistas/sumar', data={'playlist_id': canal['pid'], 'artist_id': linked.lower()}, headers={'HX-Request': 'true'})
 
@@ -690,12 +697,87 @@ def test_artist_photo_comes_from_deezer_once_linked(canal, db, spotify):
     assert photo in canal['client'].get(f'/canales/{canal["canal_id"]}').text
 
 
-def test_buscador_shows_the_spotify_photo(canal, spotify):
+def test_photo_search_redirects_to_the_deezer_picture(canal, spotify):
+    picture = 'https://cdn-images.dzcdn.net/images/artist/abc/56x56-000000-80-0-0.jpg'
+    spotify.get(f'{DEEZER_URL}/track/isrc:AR9').respond(json={'artist': {'id': 1, 'name': 'Otro'}, 'contributors': [{'id': 1, 'name': 'Otro'}]})
+    spotify.get(f'{DEEZER_URL}/search/artist').respond(json={'data': [{'id': 2, 'name': 'Duki', 'nb_fan': 9, 'picture_small': picture}]})
+
+    response = canal['client'].get('/artistas/foto', params={'name': 'Duki', 'isrc': 'AR9'}, follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers['location'] == picture
+    assert 'max-age' in response.headers['cache-control']
+
+
+def test_photo_search_without_picture_leaves_the_initial(canal, spotify):
+    empty = 'https://cdn-images.dzcdn.net/images/artist//56x56-000000-80-0-0.jpg'
+    spotify.get(f'{DEEZER_URL}/search/artist').respond(json={'data': [{'id': 2, 'name': 'Duki', 'picture_small': empty}]})
+
+    assert canal['client'].get('/artistas/foto', params={'name': 'Duki'}).status_code == 404
+
+
+def test_photo_search_needs_a_session():
+    assert TestClient(web.app).get('/artistas/foto', params={'name': 'Duki'}).status_code == 401
+
+
+def test_buscador_keeps_added_artists_dimmed(canal, db, spotify):
     library(spotify, playlist(canal['pid'], 'Trap', canal['owner']))
+    canales.add_manual_artist(db, canal['canal_id'], 'duki', 'Duki')
+    db.commit()
     found = {'artists': {'items': [{'id': 'duki', 'name': 'Duki', 'images': images(640, 320, 160)}, {'id': 'nadie', 'name': 'Nadie', 'images': []}]}}
     spotify.get(f'{API_URL}/search').respond(json=found)
 
     text = canal['client'].get(f'/canales/{canal["canal_id"]}/buscar', params={'q': 'du'}).text
 
+    assert 'id="res-duki" class="res added"' in text
+    assert '>added</small>' in text
+    assert 'name="artist_id" value="duki"' not in text
+    assert 'name="artist_id" value="nadie"' in text
     assert 'src="https://i.scdn.co/160"' in text
-    assert text.count('<img') == 1
+    # sin foto en Spotify la busca la web en Deezer
+    assert 'src="/artistas/foto?name=Nadie"' in text
+
+
+def test_adding_from_the_buscador_dims_the_result(canal, spotify):
+    library(spotify, playlist(canal['pid'], 'Trap', canal['owner']))
+    canal['client'].get(f'/canales/{canal["canal_id"]}')
+
+    response = canal['client'].post(f'/canales/{canal["canal_id"]}/manual', data={'artist_id': 'duki', 'name': 'Duki', 'image': 'https://i.scdn.co/160'}, headers={'HX-Request': 'true'})
+
+    assert 'id="res-duki" class="res added" hx-swap-oob="true"' in response.text
+    assert response.text.count('src="https://i.scdn.co/160"') == 2
+
+
+def test_profile_photo_comes_from_login(db, spotify):
+    web.app.dependency_overrides[get_conn] = lambda: db
+    client = TestClient(web.app)
+    spotify.post(TOKEN_URL).respond(json={'access_token': 'a', 'refresh_token': 'r'})
+    spotify.get(f'{API_URL}/me').respond(json={'id': uid('u_'), 'display_name': 'Luca', 'images': images(300, 64)})
+
+    try:
+        client.get(f'/callback?code=c&state={start_login(client)}')
+        text = client.get('/canales/nuevo').text
+    finally:
+        web.app.dependency_overrides.clear()
+
+    assert 'src="https://i.scdn.co/64"' in text
+
+
+def test_old_session_asks_me_once_for_the_profile_photo(spotify, monkeypatch):
+    monkeypatch.setattr(web, 'get_token', lambda conn, user: 'a')
+    me = spotify.get(f'{API_URL}/me').respond(json={'id': 'luca', 'images': images(64)})
+    request = SimpleNamespace(session={})
+    user = {'id': 1, 'disconnected_at': None}
+
+    assert web.get_profile_image(request, None, user) == 'https://i.scdn.co/64'
+    assert web.get_profile_image(request, None, user) == 'https://i.scdn.co/64'
+    assert me.call_count == 1
+
+
+def test_profile_without_photo_keeps_the_initials(spotify, monkeypatch):
+    monkeypatch.setattr(web, 'get_token', lambda conn, user: 'a')
+    spotify.get(f'{API_URL}/me').respond(json={'id': 'luca', 'images': []})
+    request = SimpleNamespace(session={})
+
+    assert web.get_profile_image(request, None, {'id': 1, 'disconnected_at': None}) is None
+    assert request.session['avatar'] == ''

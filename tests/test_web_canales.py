@@ -99,15 +99,16 @@ def test_sixth_canal_is_rejected_before_creating_playlist(logged, db, spotify):
     assert not created.called
 
 
-def test_search_hides_artists_already_added(logged, db, spotify):
+def test_search_dims_artists_already_added(logged, db, spotify):
     canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
     canales.add_manual_artist(db, canal_id, 'duki', 'Duki')
     spotify.get(f'{API_URL}/search').respond(json={'artists': {'items': [{'id': 'duki', 'name': 'Duki'}, {'id': 'dk', 'name': 'Duko'}]}})
 
     response = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duk'})
 
-    assert 'Duko' in response.text
-    assert 'Duki' not in response.text
+    assert 'name="artist_id" value="dk"' in response.text
+    assert 'name="artist_id" value="duki"' not in response.text
+    assert 'id="res-duki" class="res added"' in response.text
 
 
 def test_retencion_and_guardado_are_saved(logged, db, spotify):
