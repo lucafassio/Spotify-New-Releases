@@ -59,9 +59,10 @@
     .seg button, .seg a { border: 0; background: var(--elevada); color: var(--texto); border-radius: 99px; padding: 6px 12px; font-weight: 600; font-size: 13px; text-decoration: none; }
     .seg button:hover, .seg a:hover { background: var(--elevada-2); }
     .seg .on { background: var(--texto); color: var(--negro); }
-    .cover { flex: none; border-radius: var(--r-s); overflow: hidden; background: linear-gradient(135deg, hsl(var(--h) 70% 52%), hsl(calc(var(--h) + 50) 65% 22%)); display: grid; place-items: end start; }
+    .cover { flex: none; position: relative; border-radius: var(--r-s); overflow: hidden; background: linear-gradient(135deg, hsl(var(--h) 70% 52%), hsl(calc(var(--h) + 50) 65% 22%)); display: grid; place-items: end start; }
+    .cover img, .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
     .cover span { font-family: var(--display); font-weight: 900; font-stretch: 70%; color: rgba(0,0,0,.55); line-height: .8; padding: 6%; }
-    .avatar { flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 11px; color: rgba(0,0,0,.7); background: hsl(var(--h, 140) 55% 62%); }
+    .avatar { flex: none; position: relative; overflow: hidden; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 11px; color: rgba(0,0,0,.7); background: hsl(var(--h, 140) 55% 62%); }
     .filas { display: flex; flex-direction: column; gap: 2px; }
     .fila { display: flex; align-items: center; gap: 10px; padding: 4px 6px; border-radius: var(--r-s); font-weight: 600; font-size: 13px; }
     .fila:hover { background: var(--elevada); }

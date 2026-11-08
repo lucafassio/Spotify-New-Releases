@@ -4,7 +4,7 @@
   {% for artist in results %}
   <form id="res-{{ artist.id }}" method="post" action="/canales/{{ canal.id }}/manual" hx-post="/canales/{{ canal.id }}/manual" hx-swap="none" hx-disabled-elt="find button">
     <input type="hidden" name="artist_id" value="{{ artist.id }}"><input type="hidden" name="name" value="{{ artist.name }}">
-    <button>{{ ui.avatar(artist.name, 26) }}{{ artist.name }}</button>
+    <button>{{ ui.avatar(artist.name, 26, artist.image) }}{{ artist.name }}</button>
   </form>
   {% endfor %}
 </div>

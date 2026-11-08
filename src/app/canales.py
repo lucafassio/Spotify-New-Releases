@@ -7,6 +7,11 @@ MAX_CANALES = 5
 
 CANAL_COLUMNS = 'id, user_id, target_playlist_id, target_name, target_total, target_created_by_bot, retencion_n, guardado_filter, created_at'
 
+# la Portada del Canal es la de su Target en la Copia de playlist
+TARGET_IMAGE = '''
+    (SELECT pc.image_url FROM playlist_copies pc WHERE pc.user_id = canales.user_id AND pc.playlist_id = canales.target_playlist_id) AS target_image
+'''
+
 
 class CanalError(Exception):
     pass
@@ -19,11 +24,11 @@ def list_canales(conn, user_id):
             conn (psycopg.Connection): conexion abierta
             user_id (int): id interno del User
         Returns:
-            canales (list): filas de canales con whitelist_count
+            canales (list): filas de canales con target_image y whitelist_count
     '''
     canales = conn.cursor(row_factory=dict_row).execute(
         f'''
-        SELECT {CANAL_COLUMNS}, (SELECT count(*) FROM whitelist_artists w WHERE w.canal_id = canales.id) AS whitelist_count
+        SELECT {CANAL_COLUMNS}, {TARGET_IMAGE}, (SELECT count(*) FROM whitelist_artists w WHERE w.canal_id = canales.id) AS whitelist_count
         FROM canales WHERE user_id = %s ORDER BY created_at, id
         ''',
         (user_id,),
@@ -39,9 +44,9 @@ def get_canal(conn, user_id, canal_id):
             user_id (int): id interno del User
             canal_id (int): id del Canal
         Returns:
-            canal (dict): fila de canales, o None si no existe o es de otro User
+            canal (dict): fila de canales con target_image, o None si no existe o es de otro User
     '''
-    canal = conn.cursor(row_factory=dict_row).execute(f'SELECT {CANAL_COLUMNS} FROM canales WHERE id = %s AND user_id = %s', (canal_id, user_id)).fetchone()
+    canal = conn.cursor(row_factory=dict_row).execute(f'SELECT {CANAL_COLUMNS}, {TARGET_IMAGE} FROM canales WHERE id = %s AND user_id = %s', (canal_id, user_id)).fetchone()
     return canal
 
 
@@ -321,19 +326,20 @@ def recalc_whitelist(conn, canal_id):
 
 def get_whitelist(conn, canal_id):
     '''
-    Lista la Whitelist del Canal con el nombre de cada artista.
+    Lista la Whitelist del Canal con el nombre de cada artista y su id de Deezer para la foto.
         Args:
             conn (psycopg.Connection): conexion abierta
             canal_id (int): id del Canal
         Returns:
-            whitelist (list): filas con artist_id, name y added_at, en orden alfabetico
+            whitelist (list): filas con artist_id, name, added_at y deezer_artist_id, en orden alfabetico
     '''
     whitelist = conn.cursor(row_factory=dict_row).execute(
         '''
-        SELECT w.artist_id, w.added_at,
+        SELECT w.artist_id, w.added_at, d.deezer_artist_id,
             (SELECT sa.name FROM source_artists sa JOIN artist_sources s ON s.id = sa.artist_source_id
              WHERE s.canal_id = w.canal_id AND sa.artist_id = w.artist_id LIMIT 1) AS name
-        FROM whitelist_artists w WHERE w.canal_id = %s
+        FROM whitelist_artists w LEFT JOIN deezer_artists d ON d.spotify_artist_id = w.artist_id
+        WHERE w.canal_id = %s
         ''',
         (canal_id,),
     ).fetchall()

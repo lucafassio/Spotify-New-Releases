@@ -15,7 +15,7 @@ from psycopg.errors import LockNotAvailable, QueryCanceled
 from psycopg_pool import PoolTimeout, TooManyRequests
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import canales, copias, entregas, runs, spotify, users
+from app import canales, copias, deezer, entregas, runs, spotify, users
 from app.config import get_env, get_shared_app
 from app.crypto import decrypt_text, encrypt_text
 from app.db import close_web_pool, connect, get_web_pool
@@ -53,6 +53,7 @@ def initial(text):
 templates.env.filters['hue'] = hue
 templates.env.filters['initial'] = initial
 templates.env.filters['artist_key'] = copias.artist_sort_key
+templates.env.filters['artist_photo'] = deezer.get_picture_url
 
 
 @asynccontextmanager
@@ -722,7 +723,7 @@ def new_canal(request: Request, user=Depends(require_user), conn=Depends(get_con
         playlists = get_library(conn, user)
         # una Target tiene que ser propia: el bot solo puede escribir donde es owner
         context['own_playlists'] = [
-            {'id': p['id'], 'name': p['name'], 'total': spotify.get_track_total(p), 'taken': p['id'] in taken}
+            {'id': p['id'], 'name': p['name'], 'total': spotify.get_track_total(p), 'image': spotify.get_image_url(p.get('images'), copias.COVER_SIZE), 'taken': p['id'] in taken}
             for p in playlists if p['owner']['id'] == user['spotify_user_id']
         ]
 
@@ -860,7 +861,7 @@ def visible_artists(conn, user, copy, whitelist):
 
     chosen = {artist['artist_id'] for artist in whitelist}
     artists = copias.sorted_artists(copias.get_artists(conn, user['id'], copy['playlist_id']))
-    return [artist for artist in artists if artist['artist_id'] not in chosen]
+    return copias.add_deezer_ids(conn, [artist for artist in artists if artist['artist_id'] not in chosen])
 
 
 def canal_context(request, conn, user, canal, copies, **extra):
@@ -1018,7 +1019,7 @@ def refresh_playlist(request: Request, canal_id, playlist_id, user=Depends(requi
         'never_read': never_read,
         'first_read': result['first_read'],
         'remaining': visible_artists(conn, user, copias.get_copy(conn, user['id'], playlist_id) or copy, whitelist) or [],
-        'nuevos': [artist for artist in result['added'] if artist['artist_id'] not in chosen],
+        'nuevos': copias.add_deezer_ids(conn, [artist for artist in result['added'] if artist['artist_id'] not in chosen]),
         'gone': [artist_id for artist_id in result['removed'] if artist_id not in chosen],
     }
     return templates.TemplateResponse(request, '_playlist_refresh.html', context)
@@ -1060,7 +1061,7 @@ def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, 
         'added': added,
         'whitelist_size': len(whitelist),
         'open_id': playlist_id if artist_id in in_playlist else None,
-        'back': {'artist_id': artist_id, **in_playlist[artist_id]} if artist_id in in_playlist and added is None else None,
+        'back': copias.add_deezer_ids(conn, [{'artist_id': artist_id, **in_playlist[artist_id]}])[0] if artist_id in in_playlist and added is None else None,
         'left_empty': artist_id in in_playlist and not set(in_playlist) - chosen,
         'from_search': from_search,
     }

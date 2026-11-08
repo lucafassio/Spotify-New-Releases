@@ -6,7 +6,7 @@
         {% for row in rows %}
         {% if row.usable %}
         <div class="pl" id="pl-{{ row.playlist_id }}" data-n="Fila de playlist">
-          <div class="pl-row">{{ ui.cover(row.name, row.playlist_id, 40) }}
+          <div class="pl-row">{{ ui.cover(row.name, row.playlist_id, 40, row.image_url) }}
             <span class="grow"><span class="nm ellip">{{ row.name }}</span><small class="nums">{{ row.total }} canciones</small></span>
             {% if not uses_seed %}<a class="chev" hx-boost="false" data-playlist="{{ row.playlist_id }}" data-artists-url="/canales/{{ canal.id }}/playlists/{{ row.playlist_id }}" href="{{ canal_url(canal.id, none if row.playlist_id == open_id else row.playlist_id) }}" aria-expanded="{{ 'true' if row.playlist_id == open_id else 'false' }}" aria-label="Ver artistas" data-n="Boton ver artistas">&rsaquo;</a>{% endif %}</div>
           <div id="detalle-{{ row.playlist_id }}" data-detalle {% if row.playlist_id != open_id %}hidden{% endif %}>
@@ -15,7 +15,7 @@
         </div>
         {% else %}
         <div class="pl off" id="pl-{{ row.playlist_id }}" data-n="Fila no disponible">
-          <div class="pl-row">{{ ui.cover(row.name, row.playlist_id, 40) }}
+          <div class="pl-row">{{ ui.cover(row.name, row.playlist_id, 40, row.image_url) }}
             <span class="grow"><span class="nm ellip">{{ row.name }}</span><small>No disponible</small></span></div>
         </div>
         {% endif %}

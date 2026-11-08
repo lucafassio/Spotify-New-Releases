@@ -7,7 +7,7 @@
           {% for row in rows %}
           <div class="pl {{ 'on' if row.source }}" id="pl-{{ row.playlist_id }}">
             <div class="pl-row">{{ ui.switch('/canales/' ~ canal.id ~ '/seeds', row.source is not none, {'playlist_id': row.playlist_id}, n='Interruptor de playlist', label=row.name) }}
-              {{ ui.cover(row.name, row.playlist_id, 40) }}
+              {{ ui.cover(row.name, row.playlist_id, 40, row.image_url) }}
               <span class="grow"><span class="nm ellip">{{ row.name }}</span>
                 <small class="nums">{% if row.source %}{{ row.source.main_count }} artistas{% if row.source.include_feats %} + {{ row.source.feat_count }} invitados{% endif %}{% else %}{{ row.total }} canciones{% endif %}</small></span></div>
             {% if row.source %}
@@ -22,7 +22,7 @@
     <section class="col" data-n="Columna de reglas"><header><h2>Donde y como</h2></header>
       <div class="col-body scroll" id="rules-scroll">
         <div class="box" data-n="Caja Playlist"><h3>Playlist</h3>
-          <div class="row">{{ ui.cover(canal.target_name or '?', canal.target_playlist_id, 40) }}<span class="grow"><b class="ellip" style="display:block">{{ canal.target_name }}</b><small>{{ 'La creo el bot' if canal.target_created_by_bot else 'Una playlist tuya' }}</small></span></div>
+          <div class="row">{{ ui.cover(canal.target_name or '?', canal.target_playlist_id, 40, canal.target_image) }}<span class="grow"><b class="ellip" style="display:block">{{ canal.target_name }}</b><small>{{ 'La creo el bot' if canal.target_created_by_bot else 'Una playlist tuya' }}</small></span></div>
           {% if not target_found %}<div class="aviso warn" data-n="Aviso de playlist perdida">No encontramos esta playlist en tu Spotify. Si la borraste, el Canal se borra en la proxima Entrega.</div>{% endif %}
         </div>
         {% include '_canal_settings.html' %}

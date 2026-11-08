@@ -5,7 +5,10 @@ from psycopg.rows import dict_row
 
 from app import spotify
 
-COPY_COLUMNS = 'playlist_id, position, name, owner_id, collaborative, snapshot_id, total, artists_snapshot_id, artists_total, last_track_uri'
+COPY_COLUMNS = 'playlist_id, position, name, owner_id, collaborative, snapshot_id, total, image_url, artists_snapshot_id, artists_total, last_track_uri'
+
+# lado en px de la Portada mas grande, al doble para pantallas de alta densidad
+COVER_SIZE = 112
 
 # lo que puede fallar al leer de Spotify; el refresco lo devuelve como resultado para que la web siga con la copia
 READ_ERRORS = (httpx.HTTPError, spotify.RateLimited, spotify.QuotaExceeded)
@@ -49,13 +52,13 @@ def save_library(conn, user_id, playlists):
 
     conn.execute(
         '''
-        INSERT INTO playlist_copies (user_id, playlist_id, position, name, owner_id, collaborative, snapshot_id, total)
-        SELECT %s, * FROM unnest(%s::text[], %s::integer[], %s::text[], %s::text[], %s::boolean[], %s::text[], %s::integer[])
+        INSERT INTO playlist_copies (user_id, playlist_id, position, name, owner_id, collaborative, snapshot_id, total, image_url)
+        SELECT %s, * FROM unnest(%s::text[], %s::integer[], %s::text[], %s::text[], %s::boolean[], %s::text[], %s::integer[], %s::text[])
         ON CONFLICT (user_id, playlist_id) DO UPDATE SET
             position = EXCLUDED.position, name = EXCLUDED.name, owner_id = EXCLUDED.owner_id,
-            collaborative = EXCLUDED.collaborative, snapshot_id = EXCLUDED.snapshot_id, total = EXCLUDED.total
-        WHERE (playlist_copies.position, playlist_copies.name, playlist_copies.owner_id, playlist_copies.collaborative, playlist_copies.snapshot_id, playlist_copies.total)
-            IS DISTINCT FROM (EXCLUDED.position, EXCLUDED.name, EXCLUDED.owner_id, EXCLUDED.collaborative, EXCLUDED.snapshot_id, EXCLUDED.total)
+            collaborative = EXCLUDED.collaborative, snapshot_id = EXCLUDED.snapshot_id, total = EXCLUDED.total, image_url = EXCLUDED.image_url
+        WHERE (playlist_copies.position, playlist_copies.name, playlist_copies.owner_id, playlist_copies.collaborative, playlist_copies.snapshot_id, playlist_copies.total, playlist_copies.image_url)
+            IS DISTINCT FROM (EXCLUDED.position, EXCLUDED.name, EXCLUDED.owner_id, EXCLUDED.collaborative, EXCLUDED.snapshot_id, EXCLUDED.total, EXCLUDED.image_url)
         ''',
         (
             user_id,
@@ -66,6 +69,7 @@ def save_library(conn, user_id, playlists):
             [bool(playlist.get('collaborative')) for playlist in unique],
             [playlist.get('snapshot_id') for playlist in unique],
             [spotify.get_track_total(playlist) for playlist in unique],
+            [spotify.get_image_url(playlist.get('images'), COVER_SIZE) for playlist in unique],
         ),
     )
     conn.execute('DELETE FROM playlist_copies WHERE user_id = %s AND NOT (playlist_id = ANY(%s))', (user_id, list(position)))
@@ -110,6 +114,26 @@ def get_artists(conn, user_id, playlist_id):
     '''
     rows = conn.execute('SELECT artist_id, name, feat, isrc FROM playlist_copy_artists WHERE user_id = %s AND playlist_id = %s', (user_id, playlist_id)).fetchall()
     artists = {row[0]: {'name': row[1], 'feat': row[2], 'isrc': row[3]} for row in rows}
+    return artists
+
+
+def add_deezer_ids(conn, artists):
+    '''
+    Suma a cada artista su id de Deezer, para la foto; uno que el Run nunca vinculo queda en None.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            artists (list): dicts con artist_id, se modifican en el lugar
+        Returns:
+            artists (list): los mismos dicts con deezer_artist_id
+    '''
+    rows = conn.execute(
+        'SELECT spotify_artist_id, deezer_artist_id FROM deezer_artists WHERE spotify_artist_id = ANY(%s)',
+        ([artist['artist_id'] for artist in artists],),
+    ).fetchall()
+    deezer_ids = dict(rows)
+
+    for artist in artists:
+        artist['deezer_artist_id'] = deezer_ids.get(artist['artist_id'])
     return artists
 
 

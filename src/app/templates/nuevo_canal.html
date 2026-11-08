@@ -22,7 +22,7 @@
         {% for p in own_playlists %}
         <form method="post" action="/canales">
           <input type="hidden" name="tipo" value="mia"><input type="hidden" name="playlist_id" value="{{ p.id }}">
-          <button class="opt" {% if p.taken %}disabled{% endif %}>{{ ui.cover(p.name, p.id, 30) }}<span class="grow ellip"><b>{{ p.name }}</b></span><small class="nums">{{ 'en uso' if p.taken else p.total ~ ' canciones' }}</small></button>
+          <button class="opt" {% if p.taken %}disabled{% endif %}>{{ ui.cover(p.name, p.id, 30, p.image) }}<span class="grow ellip"><b>{{ p.name }}</b></span><small class="nums">{{ 'en uso' if p.taken else p.total ~ ' canciones' }}</small></button>
         </form>
         {% else %}
         <small>No tenes playlists propias. Crea una nueva.</small>

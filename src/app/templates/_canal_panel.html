@@ -1,6 +1,6 @@
 {% import '_macros.html' as ui %}
 <main id="canal-panel" data-canal-id="{{ canal.id }}" hx-sync="this:queue all" class="panel main" style="--h:{{ canal.target_playlist_id | hue }}" data-n="Panel">
-  <header class="head" data-n="Cabecera de Canal">{{ ui.cover(canal.target_name or '?', canal.target_playlist_id, 56) }}
+  <header class="head" data-n="Cabecera de Canal">{{ ui.cover(canal.target_name or '?', canal.target_playlist_id, 56, canal.target_image) }}
     <div class="grow"><span class="eyebrow">Canal</span><h1 class="ellip">{{ canal.target_name or 'Sin nombre' }}</h1></div>
     {% if section == 'ajustes' %}<a class="btn" href="/canales/{{ canal.id }}" data-n="Boton Ajustes">Volver a los artistas</a>{% else %}<a class="btn" href="/canales/{{ canal.id }}/ajustes" data-n="Boton Ajustes">Ajustes</a>{% endif %}
     <details class="unlink">

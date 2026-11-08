@@ -110,6 +110,21 @@ def get_album_upc(album_id):
     return upc
 
 
+def get_picture_url(artist_id):
+    '''
+    Foto chica de un artista: Deezer redirige a la imagen, asi que la pide el navegador sin gastar llamadas del server.
+        Args:
+            artist_id (int): id de Deezer del artista, puede venir vacio
+        Returns:
+            url (str): url de la foto de 50 px, o None si no esta vinculado
+    '''
+    if not artist_id:
+        return None
+
+    url = f'{API_URL}/artist/{artist_id}/image?size=small'
+    return url
+
+
 def find_artist_by_isrc(isrc, name):
     '''
     Busca en Deezer el track de un ISRC y devuelve el artista del track con ese nombre.

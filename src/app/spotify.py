@@ -440,10 +440,10 @@ def search_artists(access_token, query):
             access_token (str): access token vigente
             query (str): texto que escribio el User
         Returns:
-            artists (list): hasta 10 artistas con id y name (tope de /search desde feb 2026)
+            artists (list): hasta 10 artistas con id, name e image (tope de /search desde feb 2026)
     '''
     data = call_api('GET', access_token, '/search', params={'q': query, 'type': 'artist', 'limit': 10}).json()
-    artists = [{'id': artist['id'], 'name': artist['name']} for artist in data['artists']['items']]
+    artists = [{'id': artist['id'], 'name': artist['name'], 'image': get_image_url(artist.get('images'), 52)} for artist in data['artists']['items']]
     return artists
 
 
@@ -517,6 +517,24 @@ def get_track_total(playlist):
     collection = playlist.get('items') or playlist.get('tracks') or {}
     total = collection.get('total', 0)
     return total
+
+
+def get_image_url(images, size):
+    '''
+    Elige la imagen mas chica que no se ve borrosa al tamanio pedido; Spotify las lista de la mas grande a la mas chica.
+        Args:
+            images (list): images de un artista o una playlist, puede venir None
+            size (int): lado minimo en px
+        Returns:
+            url (str): url de la imagen, o None si no hay ninguna
+    '''
+    if not images:
+        return None
+
+    # una portada subida por el User viene sola y sin medidas
+    fits = [image for image in images if (image.get('width') or 0) >= size]
+    image = min(fits, key=lambda image: image['width']) if fits else images[0]
+    return image['url']
 
 
 def check_library(access_token, uris):

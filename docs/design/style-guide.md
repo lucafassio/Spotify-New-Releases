@@ -58,6 +58,11 @@ Verde solo para accion principal, seleccion y datos que cuentan. Nada de verde d
 
 **Portadas generadas**: cada Canal y cada playlist tiene un tono (`--h`, 0-360) que arma un
 degradado con la inicial grande en negro translucido. El tono del Canal tine su Cabecera.
+Si Spotify tiene portada de la playlist (la del Canal es la de su Target), va encima del
+degradado; el degradado queda de fondo si no hay o no carga.
+
+**Avatares**: circulo con el tono del nombre y la inicial; encima, la foto del artista de Deezer
+si el Run ya lo vinculo, o la de Spotify en los resultados del Buscador de artistas.
 
 ## Tipografia
 
@@ -90,9 +95,9 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Interruptor | Switch on/off (verde prendido) |
 | Selector | Fila de pildoras donde una queda blanca |
 | Aviso | Caja de texto con fondo: neutra, ok, warn, crit |
-| Fila de artista | Avatar, nombre y Flecha de artista, a lo ancho de la columna |
+| Fila de artista | Avatar (foto del artista o inicial), nombre y Flecha de artista, a lo ancho de la columna |
 | Flecha de artista | A la derecha en la Columna izquierda (suma a la Lista manual), a la izquierda en la Columna derecha (saca de la Lista manual) |
-| Portada | Cuadrado con degradado e inicial |
+| Portada | Cuadrado con la portada de Spotify, o degradado e inicial si no hay |
 | Barras | Grafico de barras horizontal: nombre, barra verde, numero |
 | Caja | Bloque `--superficie` dentro de una Columna, con titulo h3 |
 | Medidor de tope | Barra sobre 10.000 canciones; solo desde el 90% |

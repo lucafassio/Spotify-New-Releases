@@ -635,3 +635,67 @@ def test_missing_target_warns_in_ajustes(canal, spotify):
 def test_scope_no_longer_asks_for_follows():
     assert 'user-follow-read' not in spotify_api.SCOPES
     assert not hasattr(spotify_api, 'get_followed_artists')
+
+
+# Imagenes
+
+
+def images(*widths):
+    '''
+    Lista images de Spotify, de la mas grande a la mas chica; un ancho None es una portada subida por el User.
+        Returns:
+            images (list): dicts con url y medidas
+    '''
+    return [{'url': f'https://i.scdn.co/{width}', 'width': width, 'height': width} for width in widths]
+
+
+def test_image_url_takes_the_smallest_that_fits():
+    assert spotify_api.get_image_url(images(640, 300, 60), 112) == 'https://i.scdn.co/300'
+    assert spotify_api.get_image_url(images(60), 112) == 'https://i.scdn.co/60'
+    assert spotify_api.get_image_url(images(None), 112) == 'https://i.scdn.co/None'
+    assert spotify_api.get_image_url([], 112) is None
+    assert spotify_api.get_image_url(None, 112) is None
+
+
+def test_covers_show_the_spotify_image_over_the_gradient(canal, db, spotify):
+    mine = dict(playlist(canal['pid'], 'Trap', canal['owner']), images=images(640, 300, 60))
+    target = dict(playlist(canal['target'], 'Radar', canal['owner']), images=images(None))
+    bare = playlist(uid('p'), 'Sin portada', canal['owner'])
+    library(spotify, mine, target, bare)
+
+    text = canal['client'].get(f'/canales/{canal["canal_id"]}').text
+
+    assert db.execute('SELECT image_url FROM playlist_copies WHERE user_id = %s AND playlist_id = %s', (canal['user_id'], canal['pid'])).fetchone()[0] == 'https://i.scdn.co/300'
+    assert 'src="https://i.scdn.co/300"' in text
+    # la Portada del Canal sale de su Target: Barra lateral, Cabecera y su fila no disponible
+    assert text.count('src="https://i.scdn.co/None"') == 3
+    assert text.count('<img') == 4
+
+
+def test_artist_photo_comes_from_deezer_once_linked(canal, db, spotify):
+    linked, unlinked = uid('Linked'), uid('Unlinked')
+    db.execute('INSERT INTO deezer_artists (spotify_artist_id, deezer_artist_id, matched_by) VALUES (%s, 27, %s)', (linked.lower(), 'isrc'))
+    db.commit()
+    read_once(canal, spotify, [entry('t1', linked), entry('t2', unlinked)])
+    photo = 'src="https://api.deezer.com/artist/27/image?size=small"'
+
+    fragment = canal['client'].get(urls(canal)[0]).text
+
+    assert fragment.count(photo) == 1
+    assert fragment.count('<img') == 1
+
+    moved = canal['client'].post(f'/canales/{canal["canal_id"]}/artistas/sumar', data={'playlist_id': canal['pid'], 'artist_id': linked.lower()}, headers={'HX-Request': 'true'})
+
+    assert photo in moved.text
+    assert photo in canal['client'].get(f'/canales/{canal["canal_id"]}').text
+
+
+def test_buscador_shows_the_spotify_photo(canal, spotify):
+    library(spotify, playlist(canal['pid'], 'Trap', canal['owner']))
+    found = {'artists': {'items': [{'id': 'duki', 'name': 'Duki', 'images': images(640, 320, 160)}, {'id': 'nadie', 'name': 'Nadie', 'images': []}]}}
+    spotify.get(f'{API_URL}/search').respond(json=found)
+
+    text = canal['client'].get(f'/canales/{canal["canal_id"]}/buscar', params={'q': 'du'}).text
+
+    assert 'src="https://i.scdn.co/160"' in text
+    assert text.count('<img') == 1

@@ -1,11 +1,16 @@
 {# primitivos de docs/design/style-guide.md compartidos por las vistas del dashboard #}
 
-{% macro cover(name, key, size) -%}
-<span class="cover" style="--h:{{ key | hue }};width:{{ size }}px;height:{{ size }}px"><span style="font-size:{{ (size * 0.62) | round | int }}px">{{ name | initial }}</span></span>
+{# la imagen va encima del degradado: si no hay o no carga (las de Spotify vencen) queda la inicial #}
+{% macro picture(url) -%}
+{% if url %}<img src="{{ url }}" alt="" loading="lazy" onerror="this.remove()">{% endif %}
 {%- endmacro %}
 
-{% macro avatar(name, size=22) -%}
-<span class="avatar" style="--h:{{ name | hue }};width:{{ size }}px;height:{{ size }}px;font-size:{{ (size * 0.42) | round | int }}px">{{ name | initial }}</span>
+{% macro cover(name, key, size, image=none) -%}
+<span class="cover" style="--h:{{ key | hue }};width:{{ size }}px;height:{{ size }}px"><span style="font-size:{{ (size * 0.62) | round | int }}px">{{ name | initial }}</span>{{ picture(image) }}</span>
+{%- endmacro %}
+
+{% macro avatar(name, size=22, photo=none) -%}
+<span class="avatar" style="--h:{{ name | hue }};width:{{ size }}px;height:{{ size }}px;font-size:{{ (size * 0.42) | round | int }}px">{{ name | initial }}{{ picture(photo) }}</span>
 {%- endmacro %}
 
 {# Interruptor: un form por switch para que funcione igual sin JS #}
@@ -19,7 +24,7 @@
 
 {# Fila de artista de la Columna izquierda: id con la playlist, para bajarla sin tocar el resto de la lista #}
 {% macro playlist_artist(canal_id, playlist_id, artist) -%}
-<div class="fila" id="art-{{ playlist_id }}-{{ artist.artist_id }}" data-sort="{{ artist.name | artist_key }}" data-n="Fila de artista">{{ avatar(artist.name, 26) }}<span class="grow ellip">{{ artist.name }}</span>
+<div class="fila" id="art-{{ playlist_id }}-{{ artist.artist_id }}" data-sort="{{ artist.name | artist_key }}" data-n="Fila de artista">{{ avatar(artist.name, 26, artist.deezer_artist_id | artist_photo) }}<span class="grow ellip">{{ artist.name }}</span>
   <form method="post" action="/canales/{{ canal_id }}/artistas/sumar" hx-post="/canales/{{ canal_id }}/artistas/sumar" hx-swap="none" hx-disabled-elt="find button"><input type="hidden" name="playlist_id" value="{{ playlist_id }}"><input type="hidden" name="artist_id" value="{{ artist.artist_id }}"><button class="flecha" aria-label="Sumar a {{ artist.name }}" data-n="Flecha de artista">&rarr;</button></form>
 </div>
 {%- endmacro %}
@@ -28,7 +33,7 @@
 {% macro whitelist_row(canal_id, artist, movable, open_id) -%}
 <div class="fila" id="wl-{{ artist.artist_id }}" data-sort="{{ artist.name | artist_key }}" data-n="Fila de artista">
   {% if movable %}<form method="post" action="/canales/{{ canal_id }}/artistas/quitar" hx-post="/canales/{{ canal_id }}/artistas/quitar" hx-swap="none" hx-disabled-elt="find button"><input type="hidden" name="artist_id" value="{{ artist.artist_id }}"><input type="hidden" name="open" value="{{ open_id or '' }}"><button class="flecha" aria-label="Sacar a {{ artist.name }}" data-n="Flecha de artista">&larr;</button></form>{% endif %}
-  {{ avatar(artist.name or '?', 26) }}<span class="grow ellip">{{ artist.name }}</span>
+  {{ avatar(artist.name or '?', 26, artist.deezer_artist_id | artist_photo) }}<span class="grow ellip">{{ artist.name }}</span>
 </div>
 {%- endmacro %}
 
