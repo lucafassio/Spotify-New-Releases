@@ -1077,9 +1077,9 @@ SPOTIFY_IMAGES = 'https://i.scdn.co/'
 SEED_MESSAGE = 'Este Canal sigue sus Seed Playlists. Para elegir artistas a mano, apagalas en Ajustes.'
 
 
-def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, from_search=False):
+def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, from_search=False, listed=None):
     '''
-    Responde a una Flecha de artista o al Buscador sin llamar a Spotify: solo cambia la fila, la Columna derecha y el contador, nunca todo el Panel.
+    Responde a una Flecha de artista o al Buscador sin llamar a Spotify: solo la fila movida y los contadores, nunca la Whitelist entera.
         Args:
             request (Request): request entrante
             conn (psycopg.Connection): conexion del request
@@ -1089,6 +1089,7 @@ def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, 
             artist_id (str): id del artista movido
             playlist_id (str): fila de donde salio; si no, la playlist abierta
             from_search (bool): True si vino del Buscador de artistas
+            listed (dict): el artista en la copia de playlist_id, si el que llama ya lo leyo
         Returns:
             response (Response): swaps fuera de banda, o redirect para formularios sin JS
     '''
@@ -1097,11 +1098,10 @@ def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, 
     if request.headers.get('HX-Request') != 'true':
         return RedirectResponse(canal_url(canal['id'], playlist_id), status_code=303)
 
-    whitelist = canales.get_whitelist(conn, canal['id'])
-    copy = find_usable_copy(conn, user, canal, playlist_id) if playlist_id else None
-    in_playlist = copias.get_artists(conn, user['id'], playlist_id) if copy else {}
-    added = next((artist for artist in whitelist if artist['artist_id'] == artist_id), None)
-    chosen = {artist['artist_id'] for artist in whitelist}
+    # sin chequear si la playlist se puede abrir: la copia es del User y una que no se abre no tiene filas que tocar
+    added = canales.get_whitelist_artist(conn, canal['id'], artist_id)
+    if playlist_id and listed is None:
+        listed = copias.get_playlist_artist(conn, user['id'], playlist_id, artist_id)
 
     # la foto que ya mostraba el Buscador; solo de Spotify, el form lo arma el navegador
     search_image = form.get('image', '') if from_search else ''
@@ -1111,14 +1111,12 @@ def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, 
 
     context = {
         'canal': canal,
-        'canales': canales.list_canales(conn, user['id']),
-        'view': canal['id'],
         'artist_id': artist_id,
         'added': added,
-        'whitelist_size': len(whitelist),
-        'open_id': playlist_id if artist_id in in_playlist else None,
-        'back': copias.add_deezer_ids(conn, [{'artist_id': artist_id, **in_playlist[artist_id]}])[0] if artist_id in in_playlist and added is None else None,
-        'left_empty': artist_id in in_playlist and not set(in_playlist) - chosen,
+        'whitelist_size': canales.count_whitelist(conn, canal['id']),
+        'open_id': playlist_id if listed else None,
+        'back': listed if listed and added is None else None,
+        'left_empty': bool(listed and added) and copias.count_unchosen(conn, user['id'], playlist_id, canal['id']) == 0,
         'from_search': from_search,
         'search_image': search_image,
     }
@@ -1144,13 +1142,13 @@ def add_artist(request: Request, canal_id, user=Depends(require_user), form=Depe
     if canales.uses_seed(conn, canal['id']):
         return action_failed(request, SEED_MESSAGE)
 
-    artist = copias.get_artists(conn, user['id'], form['playlist_id']).get(form['artist_id'])
+    artist = copias.get_playlist_artist(conn, user['id'], form['playlist_id'], form['artist_id'])
     if artist is None:
         return action_failed(request, 'Ese artista ya no esta en esa playlist.')
 
     canales.add_manual_artist(conn, canal['id'], form['artist_id'], artist['name'], artist['isrc'])
     conn.commit()
-    return artist_moved(request, conn, user, canal, form, form['artist_id'], playlist_id=form['playlist_id'])
+    return artist_moved(request, conn, user, canal, form, form['artist_id'], playlist_id=form['playlist_id'], listed=artist)
 
 
 @app.post('/canales/{canal_id}/artistas/quitar')

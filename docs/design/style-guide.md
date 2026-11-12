@@ -11,7 +11,10 @@ cambio alcanza con "en la Fila de playlist, ...". Si un nombre choca con el glos
 
 Estado: base definida (#10). Layout base elegido en #7 (ronda 4, dashboard fijo); pulido visual pendiente.
 
-Interacciones de Vista Canal: la Flecha de artista mueve sin llamar a Spotify y actualiza las dos columnas y el contador de la Barra lateral.
+Interacciones de Vista Canal: la Flecha de artista (y un Resultado del Buscador) mueve la fila en el acto, sin esperar al servidor, y actualiza
+las dos columnas y el contador de la Barra lateral. Al sacar, la fila vuelve a la playlist abierta al instante si salio de ahi; si no,
+aparece cuando responde el servidor. Varios clicks seguidos se mandan en orden. Si el servidor rechaza o falla, la fila vuelve a su
+lugar y aparece un Aviso de accion ("No pudimos guardar el cambio. Proba de nuevo." si no trae uno propio).
 Una sola Fila de playlist abierta a la vez: abrir otra pliega la anterior. La fila muestra su copia guardada al instante y la actualiza por detras.
 La lista nunca se reordena mientras se lee: lo que llega durante la lectura va al Bloque de nuevos, al fondo.
 Con Seed Playlists prendidas, la Columna izquierda queda apagada y no responde.

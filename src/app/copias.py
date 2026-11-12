@@ -117,6 +117,50 @@ def get_artists(conn, user_id, playlist_id):
     return artists
 
 
+def get_playlist_artist(conn, user_id, playlist_id, artist_id):
+    '''
+    Lee un solo artista guardado de una playlist, con su id de Deezer para la foto.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            user_id (int): id interno del User
+            playlist_id (str): id de Spotify de la playlist
+            artist_id (str): id de Spotify del artista
+        Returns:
+            artist (dict): artist_id, name, feat, isrc y deezer_artist_id, o None si no esta en la copia
+    '''
+    artist = conn.cursor(row_factory=dict_row).execute(
+        '''
+        SELECT a.artist_id, a.name, a.feat, a.isrc, d.deezer_artist_id
+        FROM playlist_copy_artists a LEFT JOIN deezer_artists d ON d.spotify_artist_id = a.artist_id
+        WHERE a.user_id = %s AND a.playlist_id = %s AND a.artist_id = %s
+        ''',
+        (user_id, playlist_id, artist_id),
+    ).fetchone()
+    return artist
+
+
+def count_unchosen(conn, user_id, playlist_id, canal_id):
+    '''
+    Cuenta los artistas de una playlist que todavia no entran en la Whitelist del Canal: en cero va "Ya estan todos".
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            user_id (int): id interno del User
+            playlist_id (str): id de Spotify de la playlist
+            canal_id (int): id del Canal
+        Returns:
+            count (int): artistas que quedan para elegir
+    '''
+    count = conn.execute(
+        '''
+        SELECT count(*) FROM playlist_copy_artists a
+        WHERE a.user_id = %s AND a.playlist_id = %s
+            AND NOT EXISTS (SELECT 1 FROM whitelist_artists w WHERE w.canal_id = %s AND w.artist_id = a.artist_id)
+        ''',
+        (user_id, playlist_id, canal_id),
+    ).fetchone()[0]
+    return count
+
+
 def add_deezer_ids(conn, artists):
     '''
     Suma a cada artista su id de Deezer, para la foto; uno que el Run nunca vinculo queda en None.

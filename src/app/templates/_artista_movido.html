@@ -1,4 +1,5 @@
 {% import '_macros.html' as ui %}
+{# static/flechas.js ya movio la fila: estos swaps la confirman y reemplazan las filas que armo el navegador, sin duplicarlas #}
 {% if added %}
 <div id="wl-vacio" hx-swap-oob="delete"></div>
 <div hx-swap-oob="beforeend:#whitelist-filas">{{ ui.whitelist_row(canal.id, added, true, open_id) }}</div>
@@ -14,5 +15,5 @@
 {% if not whitelist_size %}<div hx-swap-oob="beforeend:#whitelist-filas">{{ ui.whitelist_empty() }}</div>{% endif %}
 {% endif %}
 <small id="whitelist-count" class="nums" hx-swap-oob="true">{{ whitelist_size }} artistas</small>
-{% set oob = true %}
-{% include '_canal_nav.html' %}
+{# solo el contador de la Fila de Canal: la Barra lateral entera pedia leer todos los Canales #}
+<small class="nums" hx-swap-oob="outerHTML:.nav-row[href='/canales/{{ canal.id }}'] small">{{ whitelist_size }} artistas</small>

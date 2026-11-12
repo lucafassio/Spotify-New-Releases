@@ -350,6 +350,45 @@ def get_whitelist(conn, canal_id):
     return whitelist
 
 
+def get_whitelist_artist(conn, canal_id, artist_id):
+    '''
+    Lee un solo artista de la Whitelist, con lo mismo que trae get_whitelist: lo que pinta su fila al moverlo.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            canal_id (int): id del Canal
+            artist_id (str): id de Spotify del artista
+        Returns:
+            artist (dict): fila con artist_id, name, isrc, added_at y deezer_artist_id, o None si no entra
+    '''
+    artist = conn.cursor(row_factory=dict_row).execute(
+        '''
+        SELECT w.artist_id, w.added_at, d.deezer_artist_id, sa.name, sa.isrc
+        FROM whitelist_artists w
+        LEFT JOIN LATERAL (
+            SELECT sa.name, sa.isrc FROM source_artists sa JOIN artist_sources s ON s.id = sa.artist_source_id
+            WHERE s.canal_id = w.canal_id AND sa.artist_id = w.artist_id ORDER BY sa.isrc NULLS LAST LIMIT 1
+        ) sa ON true
+        LEFT JOIN deezer_artists d ON d.spotify_artist_id = w.artist_id
+        WHERE w.canal_id = %s AND w.artist_id = %s
+        ''',
+        (canal_id, artist_id),
+    ).fetchone()
+    return artist
+
+
+def count_whitelist(conn, canal_id):
+    '''
+    Cuenta los artistas de la Whitelist, para el contador de la Columna derecha y de la Fila de Canal.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            canal_id (int): id del Canal
+        Returns:
+            count (int): artistas que entran
+    '''
+    count = conn.execute('SELECT count(*) FROM whitelist_artists WHERE canal_id = %s', (canal_id,)).fetchone()[0]
+    return count
+
+
 def refresh_sources(conn, access_token, canal, library):
     '''
     Pone al dia las Seed Playlists del Canal que cambiaron, leyendo por su Copia de playlist, y recalcula la Whitelist; una Lista manual no lee nada.
