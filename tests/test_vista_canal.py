@@ -157,8 +157,78 @@ def test_arrow_moves_artist_without_spotify_and_keeps_isrc(canal, db, spotify):
     assert f'id="art-{canal["pid"]}-ysy" hx-swap-oob="delete"' in response.text
     assert 'hx-swap-oob="beforeend:#whitelist-filas"' in response.text
     assert 'id="wl-ysy"' in response.text
-    assert 'id="side-list"' in response.text
+    # solo el contador de la Fila de Canal, no toda la Barra lateral
+    assert 'id="side-list"' not in response.text
+    assert f'hx-swap-oob="outerHTML:.nav-row[href=\'/canales/{canal["canal_id"]}\'] small">1 artistas</small>' in response.text
     assert '1 artistas' in response.text
+
+
+def test_moves_read_only_the_moved_artist_and_the_count(canal, db, spotify, monkeypatch):
+    read_once(canal, spotify, [entry('t1', 'Duki', isrc='AR1'), entry('t2', 'Mora')])
+    db.execute('INSERT INTO deezer_artists (spotify_artist_id, deezer_artist_id, matched_by) VALUES (%s, 31, %s) ON CONFLICT DO NOTHING', ('mora', 'isrc'))
+    client = canal['client']
+    base = f'/canales/{canal["canal_id"]}'
+    headers = {'HX-Request': 'true'}
+
+    def forbidden(*args):
+        raise AssertionError('la respuesta de una Flecha no relee la Whitelist ni los Canales')
+
+    monkeypatch.setattr(canales, 'get_whitelist', forbidden)
+    monkeypatch.setattr(canales, 'list_canales', forbidden)
+
+    added = client.post(f'{base}/artistas/sumar', data={'playlist_id': canal['pid'], 'artist_id': 'duki'}, headers=headers)
+    searched = client.post(f'{base}/manual', data={'artist_id': 'mora', 'name': 'Mora', 'open': canal['pid']}, headers=headers)
+    removed = client.post(f'{base}/artistas/quitar', data={'artist_id': 'mora', 'open': canal['pid']}, headers=headers)
+
+    assert 'id="wl-duki"' in added.text
+    assert '/artistas/foto?name=Duki&amp;isrc=AR1' in added.text
+    assert '1 artistas' in added.text
+    assert 'id="wl-mora"' in searched.text
+    assert 'Ya estan todos' in searched.text
+    assert '2 artistas' in searched.text
+    assert 'id="wl-mora" hx-swap-oob="delete"' in removed.text
+    assert f'id="art-{canal["pid"]}-mora"' in removed.text
+    assert 'https://api.deezer.com/artist/31/image' in removed.text
+    assert '1 artistas' in removed.text
+
+
+def test_arrow_forms_are_marked_for_the_optimistic_move(canal, db, spotify):
+    read_once(canal, spotify, [entry('t1', 'Duki'), entry('t2', 'Ángel')])
+    canales.add_manual_artist(db, canal['canal_id'], 'mora', 'Mora')
+    db.commit()
+    found = {'artists': {'items': [{'id': 'zoe', 'name': 'Zoé', 'images': []}]}}
+    spotify.get(f'{API_URL}/search').respond(json=found)
+
+    page = canal['client'].get(f'/canales/{canal["canal_id"]}', params={'open': canal['pid']}).text
+    results = canal['client'].get(f'/canales/{canal["canal_id"]}/buscar', params={'q': 'zo'}).text
+
+    assert 'data-flecha="sumar"' in page
+    assert 'data-flecha="quitar"' in page
+    assert '<script src="/static/flechas.js" defer></script>' in page
+    # el Resultado trae su clave de orden para que el navegador lo ubique en la Columna derecha
+    assert 'data-flecha="manual"' in results
+    assert 'data-sort="zoe"' in results
+
+
+def test_arrows_without_js_redirect_to_the_canal(canal, db, spotify):
+    read_once(canal, spotify, [entry('t1', 'Duki')])
+    base = f'/canales/{canal["canal_id"]}'
+
+    added = canal['client'].post(f'{base}/artistas/sumar', data={'playlist_id': canal['pid'], 'artist_id': 'duki'}, follow_redirects=False)
+    removed = canal['client'].post(f'{base}/artistas/quitar', data={'artist_id': 'duki', 'open': canal['pid']}, follow_redirects=False)
+    searched = canal['client'].post(f'{base}/manual', data={'artist_id': 'bb', 'name': 'Bad Bunny'}, follow_redirects=False)
+
+    assert added.status_code == removed.status_code == searched.status_code == 303
+    assert added.headers['location'] == removed.headers['location'] == f'{base}?open={canal["pid"]}'
+    assert searched.headers['location'] == base
+    assert [row['name'] for row in canales.get_whitelist(db, canal['canal_id'])] == ['Bad Bunny']
+
+
+def test_flechas_script_is_served(canal):
+    response = canal['client'].get('/static/flechas.js')
+
+    assert response.status_code == 200
+    assert 'htmx:oobBeforeSwap' in response.text
 
 
 def test_chosen_artist_leaves_the_list_until_ya_estan_todos(canal, spotify):
