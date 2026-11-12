@@ -1,0 +1,276 @@
+<title>Chequeo de rendimiento Radar</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Figtree:wght@400..700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  /* layout: una columna de lectura; resumen arriba, linea de tiempo medida, hallazgos por severidad, orden de arreglo al final */
+  /* look unico y oscuro a proposito: son los tokens de docs/design/style-guide.md */
+  :root {
+    color-scheme: dark;
+    --negro: #000000; --superficie: #141414; --elevada: #1E1E1E; --linea: #2A2A2A;
+    --texto: #F5F5F2; --texto-2: #A7A9A4; --texto-3: #6E716B;
+    --verde: #1ED760; --verde-suave: rgba(30, 215, 96, .13);
+    --ambar: #F5B642; --ambar-suave: rgba(245, 182, 66, .14);
+    --rojo: #FF6B6B; --rojo-suave: rgba(255, 107, 107, .14);
+    --display: 'Archivo', 'Arial Narrow', system-ui, sans-serif;
+    --body: 'Figtree', 'Segoe UI', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--negro); color: var(--texto); font: 15px/1.55 var(--body); padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  main { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+  section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  h1, h2, h3 { font-family: var(--display); margin: 0; line-height: 1.08; text-wrap: balance; }
+  h1 { font-size: clamp(34px, 6vw, 54px); font-weight: 900; font-stretch: 80%; letter-spacing: -.02em; }
+  h2 { font-size: 26px; font-weight: 800; font-stretch: 85%; }
+  h3 { font-size: 17px; font-weight: 800; font-stretch: 90%; }
+  p { margin: 0; max-width: 68ch; }
+  .muted { color: var(--texto-2); }
+  .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--texto-2); }
+  code { font: 12.5px var(--mono); background: var(--elevada); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  a { color: var(--verde); }
+  .lead { font-size: 17px; color: var(--texto); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+  .tile { background: var(--superficie); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+  .tile b { font: 900 34px/1 var(--display); font-stretch: 80%; font-variant-numeric: tabular-nums; }
+  .tile small { color: var(--texto-2); font-size: 13px; }
+  .scroll-x { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--texto-2); font-weight: 700; padding: 6px 10px; border-bottom: 1px solid var(--linea); white-space: nowrap; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--linea); vertical-align: top; }
+  td.n, th.n { text-align: right; white-space: nowrap; }
+  .tl { display: flex; flex-direction: column; gap: 6px; }
+  .tl-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 54px; gap: 10px; align-items: center; font-size: 13px; }
+  .tl-track { position: relative; height: 16px; background: var(--superficie); border-radius: 4px; }
+  .tl-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; min-width: 3px; }
+  .tl-bar.ok { background: var(--verde); } .tl-bar.bad { background: var(--rojo); } .tl-bar.warn { background: var(--ambar); }
+  .tl-row .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--texto-2); }
+  .axis { display: grid; grid-template-columns: 150px minmax(0, 1fr) 54px; gap: 10px; font-size: 11px; color: var(--texto-3); }
+  .axis div { display: flex; justify-content: space-between; }
+  .finding { background: var(--superficie); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .finding header { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .sev { flex: none; font-size: 11px; font-weight: 700; letter-spacing: .08em; padding: 2px 9px; border-radius: 99px; }
+  .sev.p0 { background: var(--rojo-suave); color: var(--rojo); }
+  .sev.p1 { background: var(--ambar-suave); color: var(--ambar); }
+  .sev.p2 { background: var(--elevada); color: var(--texto-2); }
+  .where { font-size: 12.5px; color: var(--texto-2); }
+  .finding ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; max-width: 70ch; }
+  .fix { border-top: 1px solid var(--linea); padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .fix .eyebrow { color: var(--verde); }
+  .tag { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 99px; background: var(--elevada); color: var(--texto-2); white-space: nowrap; }
+  .tag.med { background: var(--verde-suave); color: var(--verde); }
+  ol.plan { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; max-width: 72ch; }
+  @media (max-width: 560px) { .tl-row, .axis { grid-template-columns: 96px minmax(0, 1fr) 44px; } }
+</style>
+
+<main>
+  <section>
+    <span class="eyebrow">Radar de Viernes &middot; chequeo del 12/11/2026</span>
+    <h1>Donde se va el tiempo</h1>
+    <p class="lead">La app no es lenta por la base ni por Spotify. Se cuelga porque cada foto de artista sin vincular pasa por nuestro servidor, que con 0,1 CPU atiende unas 3,5 por segundo. Abrir una playlist dispara 60 a 140 de esas fotos y todo lo demas queda en la cola atras.</p>
+    <p class="muted">Revise todo el codigo de la web (<code>web.py</code>, <code>canales.py</code>, <code>copias.py</code>, <code>spotify.py</code>, <code>deezer.py</code>, <code>db.py</code>, templates), medi la app local contra Neon y lei los logs de Render de tu sesion de hoy a las 18:56. No toque nada del codigo.</p>
+    <div class="tiles">
+      <div class="tile"><b>26 s</b><small>tardo el refresco de una playlist en prod hoy, medido en logs</small></div>
+      <div class="tile"><b>~3,5/s</b><small>fotos que logra servir <code>/artistas/foto</code> en Render Free</small></div>
+      <div class="tile"><b>162 KB</b><small>de HTML y 190 imagenes en la Vista Canal con una playlist abierta</small></div>
+      <div class="tile"><b>12</b><small>idas y vueltas a la base para pintar una Vista Canal</small></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Lo que paso en tu sesion de hoy</h2>
+    <p class="muted">Logs de Render, 18:56:29 a 18:56:59 hora Argentina. Cada barra va desde el click hasta que el servidor termino de responder. Escala: 30 segundos.</p>
+    <div class="tl">
+      <div class="axis"><span></span><div><span>0 s</span><span>10 s</span><span>20 s</span><span>30 s</span></div><span></span></div>
+      <div class="tl-row"><span>Abrir playlist A</span><div class="tl-track"><div class="tl-bar ok" style="left:0;width:1%"></div></div><span class="n">&lt;1 s</span></div>
+      <div class="tl-row"><span>85 fotos de artistas</span><div class="tl-track"><div class="tl-bar bad" style="left:18.7%;width:79.3%"></div></div><span class="n">24 s</span></div>
+      <div class="tl-row"><span>Refresco de A</span><div class="tl-track"><div class="tl-bar bad" style="left:0;width:86.7%"></div></div><span class="n">26 s</span></div>
+      <div class="tl-row"><span>Abrir playlist B</span><div class="tl-track"><div class="tl-bar ok" style="left:54%;width:1%"></div></div><span class="n">&lt;1 s</span></div>
+      <div class="tl-row"><span>Refresco de B</span><div class="tl-track"><div class="tl-bar warn" style="left:54%;width:39.7%"></div></div><span class="n">12 s</span></div>
+    </div>
+    <p>El fragmento con los artistas llega rapido. Lo que tarda es el refresco, que se dispara junto con las fotos y compite con ellas. Mientras dura, el Indicador de lectura queda en "Buscando..." y las Flechas de artista hacen cola. Mas tarde en la misma sesion otra playlist tardo 23 s y otra 8 s; las que ya tenian las fotos en cache del navegador tardaron entre 0,3 y 2 s.</p>
+  </section>
+
+  <section>
+    <h2>Medicion local</h2>
+    <p class="muted">App corriendo en tu PC contra Neon en Virginia, sin llamar a Spotify. Mediana de 3 corridas. En tu PC cada consulta cuesta ~200 ms por la distancia; en Render la base esta en la misma region y ese costo baja mucho, pero la cantidad de consultas es la misma.</p>
+    <div class="scroll-x">
+      <table>
+        <thead><tr><th>Pantalla</th><th class="n">Total</th><th class="n">Consultas</th><th class="n">En la base</th><th class="n">HTML</th><th class="n">Imagenes</th><th class="n">Fotos por nuestro server</th></tr></thead>
+        <tbody>
+          <tr><td>Inicio</td><td class="n">740 ms</td><td class="n">3 + 3</td><td class="n">580 ms</td><td class="n">22 KB</td><td class="n">1</td><td class="n">0</td></tr>
+          <tr><td>Vista Canal</td><td class="n">1.317 ms</td><td class="n">7 + 3</td><td class="n">1.156 ms</td><td class="n">113 KB</td><td class="n">125</td><td class="n">0</td></tr>
+          <tr><td>Vista Canal con playlist abierta</td><td class="n">1.650 ms</td><td class="n">9 + 3</td><td class="n">1.463 ms</td><td class="n">162 KB</td><td class="n">190</td><td class="n">65</td></tr>
+          <tr><td>Abrir una Fila de playlist</td><td class="n">1.534 ms</td><td class="n">8 + 3</td><td class="n">1.366 ms</td><td class="n">48 KB</td><td class="n">65</td><td class="n">65</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">El "+ 3" son idas y vueltas que no son consultas tuyas: el chequeo del pool, el BEGIN y el COMMIT. Armar el HTML con Jinja llevo 57 ms en tu PC. Conexion nueva a Neon: 1.055 ms; primera visita con el pool frio: 2.362 ms. Datos: 1 Canal, 79 artistas en la Whitelist, 45 playlists, la mas grande con 143 artistas de los que 65 no tienen foto vinculada.</p>
+  </section>
+
+  <section>
+    <h2>Hallazgos</h2>
+
+    <article class="finding">
+      <header><span class="sev p0">CRITICO</span><h3>Las fotos de artistas tapan el servidor</h3><span class="tag med">medido en prod</span></header>
+      <span class="where"><code>web.py:1261</code> <code>find_artist_photo</code> &middot; <code>deezer.py:44</code> &middot; <code>_macros.html:5</code></span>
+      <ul>
+        <li>Cada artista que el Run todavia no vinculo con Deezer pide su foto a <code>/artistas/foto</code>. Ese endpoint hace 1 o 2 llamadas a Deezer por foto, en el momento.</li>
+        <li><code>deezer.call_api</code> usa <code>httpx.get</code> suelto: abre una conexion TLS nueva en cada llamada. Con 0,1 CPU el saludo TLS es lo que mas cuesta.</li>
+        <li>Si Deezer corta por su limite de 50 pedidos cada 5 s, el codigo hace <code>time.sleep(5)</code> hasta 3 veces dentro del request. Son hasta 15 s con un hilo ocupado.</li>
+        <li>La URL lleva nombre + ISRC, y el ISRC cambia segun la playlist. El mismo artista en dos playlists son dos URLs: el cache del navegador no sirve entre playlists. En los logs se ve a Dalex, Almighty, Arcangel, Duki y otros pedidos dos veces.</li>
+        <li><code>loading="lazy"</code> no frena nada: se pidieron las 85 fotos de una.</li>
+        <li>Nada se guarda del lado del servidor. Un 503 no se cachea y se repite en la proxima visita.</li>
+      </ul>
+      <div class="fix"><span class="eyebrow">Como arreglarlo</span>
+        <ul>
+          <li>Guardar la foto en la base por <code>artist_id</code> (columna nueva en <code>deezer_artists</code> o tabla propia) y resolverlas en tanda despues del refresco de la playlist, en segundo plano. El HTML sale con la URL final del CDN de Deezer y nuestro server no toca ninguna imagen.</li>
+          <li>Mientras tanto: un <code>httpx.Client</code> compartido para Deezer, un semaforo de 3 o 4 fotos a la vez, URL por <code>artist_id</code> y cache en memoria.</li>
+          <li>Sacar el <code>time.sleep</code> del camino web: en un request de foto, si Deezer limita, responder 503 con <code>Retry-After</code>.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="finding">
+      <header><span class="sev p0">CRITICO</span><h3>El refresco de playlist lee Spotify pagina por pagina</h3><span class="tag">leido en codigo</span></header>
+      <span class="where"><code>web.py:1048</code> <code>refresh_playlist</code> &middot; <code>spotify.py:328</code> <code>get_pages</code> &middot; <code>copias.py:140</code></span>
+      <ul>
+        <li>La primera lectura de una playlist, o una que cambio en el medio, baja todos sus items de a 50, una pagina atras de la otra. Una playlist de 1.000 canciones son 20 llamadas en fila.</li>
+        <li>El tope interactivo es de 8 s (<code>spotify.py:64</code>). Una playlist grande no llega y queda "Sin actualizar" para siempre, porque el proximo intento arranca de cero.</li>
+        <li>Antes de eso llama a <code>sync_library</code>: toda la biblioteca en <code>GET /me/playlists</code>, mas un upsert de 45 filas y un DELETE, por cada apertura fuera del minuto de cache.</li>
+      </ul>
+      <div class="fix"><span class="eyebrow">Como arreglarlo</span>
+        <ul>
+          <li>El total de la playlist ya se conoce: pedir las paginas por <code>offset</code> en paralelo, 4 a la vez.</li>
+          <li>Guardar el avance parcial para que el segundo intento siga donde quedo el primero.</li>
+          <li>Subir el cache de la biblioteca de 1 a 5 minutos para las aperturas; ADR 0008 ya asume que <code>/me/playlists</code> tarda 30 a 60 s en reflejar cambios.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="finding">
+      <header><span class="sev p1">ALTO</span><h3>Cambiar de vista rehace y compara la pagina entera</h3><span class="tag med">medido local</span></header>
+      <span class="where"><code>shell.html:7</code> &middot; <code>base.html:15-164</code> &middot; <code>web.py:823</code></span>
+      <ul>
+        <li><code>hx-boost</code> con <code>morph:innerHTML</code> sobre el body: cada click en la Barra lateral baja la pagina completa (113 a 162 KB) y idiomorph compara todo el arbol, con 125 a 190 imagenes.</li>
+        <li>El CSS y el JS van inline en <code>base.html</code>: unos 17 KB que viajan de nuevo en cada navegacion y no se cachean.</li>
+        <li>En Render Free, armar ese HTML con Jinja deberia costar bastante mas que los 57 ms de tu PC. No pude medirlo: Render no da metricas en el plan gratis.</li>
+        <li>htmx e idiomorph se cargan desde unpkg, sin <code>defer</code>, en el head. Bloquean el primer pintado y dependen de un tercero.</li>
+      </ul>
+      <div class="fix"><span class="eyebrow">Como arreglarlo</span>
+        <ul>
+          <li>En navegacion boosteada devolver solo el Panel y la Lista de Canales (ya existe <code>_canal_response.html</code>), no la pagina entera.</li>
+          <li>Mover CSS y JS a <code>/static</code> con <code>Cache-Control: immutable</code> y nombre versionado; copiar htmx e idiomorph ahi.</li>
+          <li>Precargar al apoyar el mouse en una Fila de Canal (extension <code>preload</code> de htmx): la vista llega antes de soltar el click.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="finding">
+      <header><span class="sev p1">ALTO</span><h3>La Vista Ajustes espera a Spotify antes de pintar</h3><span class="tag">leido en codigo</span></header>
+      <span class="where"><code>web.py:956</code> <code>load_copies(fresh=not partial)</code></span>
+      <ul>
+        <li>Cada entrada completa a Ajustes llama a <code>GET /me/playlists</code> y reescribe las copias antes de responder. La Vista Canal no lo hace y por eso abre mas rapido.</li>
+        <li><code>create_canal</code> (<code>web.py:801</code>) llama a <code>get_my_playlists</code> salteando el cache. <code>toggle_seed</code> pasa por <code>load_copies</code> y despues por <code>refresh_copy</code>, que vuelve a sincronizar la biblioteca.</li>
+      </ul>
+      <div class="fix"><span class="eyebrow">Como arreglarlo</span>
+        <ul><li>Pintar Ajustes con lo guardado y refrescar por detras con <code>hx-trigger="load"</code>, igual que las playlists.</li><li>Usar <code>get_library</code> en <code>create_canal</code>.</li></ul>
+      </div>
+    </article>
+
+    <article class="finding">
+      <header><span class="sev p1">ALTO</span><h3>Las Flechas de artista van en fila y sin respuesta inmediata</h3><span class="tag">leido en codigo</span></header>
+      <span class="where"><code>_canal_panel.html:2</code> <code>hx-sync="this:queue all"</code> &middot; <code>web.py:1080</code> <code>artist_moved</code></span>
+      <ul>
+        <li>La fila no se mueve hasta que vuelve el servidor. Cada click hace unas 13 consultas: valida Canal, mira Seeds, inserta, recalcula la Whitelist con dos sentencias, y despues vuelve a leer la Whitelist entera con un JOIN LATERAL, la copia, los artistas y todos los Canales solo para actualizar un contador.</li>
+        <li>Todos los POST del Panel hacen cola. Sumar diez artistas seguidos son diez esperas encadenadas, y un refresco lento de fotos las frena a todas.</li>
+      </ul>
+      <div class="fix"><span class="eyebrow">Como arreglarlo</span>
+        <ul>
+          <li>Mover la fila en el navegador al hacer click y dejar que la respuesta solo confirme o deshaga.</li>
+          <li>En <code>artist_moved</code> traer solo lo necesario: la fila del artista, un <code>count(*)</code> y nada mas.</li>
+          <li>Reemplazar <code>uses_seed</code> (hoy un GROUP BY con conteos) por un <code>EXISTS</code>.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="finding">
+      <header><span class="sev p1">ALTO</span><h3>El Buscador de artistas suma esperas</h3><span class="tag">leido en codigo</span></header>
+      <span class="where"><code>_canal_columnas.html:33</code> &middot; <code>web.py:1230</code> <code>search_artists</code></span>
+      <ul>
+        <li>300 ms de espera fija, despues usuario + Canal + Seeds + Whitelist completa en la base, despues <code>/search</code> de Spotify. Nada se cachea: borrar una letra y volver a escribirla repite todo y gasta cuota.</li>
+        <li>Busca desde la primera letra.</li>
+        <li>Si Spotify devuelve un 429, <code>spotify.py:276</code> bloquea todas las acciones del usuario durante el <code>Retry-After</code>, no solo la busqueda.</li>
+      </ul>
+      <div class="fix"><span class="eyebrow">Como arreglarlo</span>
+        <ul><li>Cachear resultados por texto 10 minutos en <code>WebCache</code>.</li><li>Minimo 2 letras y espera de 200 ms.</li><li>Para marcar "added" pedir solo los <code>artist_id</code>, sin el JOIN.</li></ul>
+      </div>
+    </article>
+
+    <article class="finding">
+      <header><span class="sev p2">MEDIO</span><h3>Demasiadas idas y vueltas a la base por request</h3><span class="tag med">medido local</span></header>
+      <span class="where"><code>db.py:29</code> &middot; <code>web.py:183</code>, <code>735</code>, <code>914</code></span>
+      <ul>
+        <li>Usuario, Canal, lista de Canales, Seeds, copias, Whitelist y artistas son consultas separadas. <code>get_canal</code> y <code>list_canales</code> traen lo mismo. Se suman el chequeo del pool, BEGIN y COMMIT aunque sea solo lectura.</li>
+        <li>En prod cada una cuesta pocos ms. En tu PC son 200 ms cada una: por eso correr la app local se siente 1,5 s por pantalla. Es distancia, no un bug.</li>
+        <li><code>min_size=0</code> y <code>max_idle=60</code>: tras un minuto sin clicks la conexion se cierra y el siguiente click paga conexion nueva mas 3 sentencias de <code>configure</code>. Si ademas Neon se durmio (5 min), se suma su arranque y puede saltar el aviso "La app esta ocupada" por el <code>timeout=5</code>.</li>
+      </ul>
+      <div class="fix"><span class="eyebrow">Como arreglarlo</span>
+        <ul>
+          <li>Una sola consulta para la Vista Canal (Canal + lista + Seeds), y <code>autocommit</code> en los GET.</li>
+          <li>Fijar <code>statement_timeout</code> y <code>lock_timeout</code> en el rol de Postgres y borrar <code>configure</code>.</li>
+          <li><code>max_idle=300</code>: iguala el tiempo en que Neon se duerme solo, sin mantenerlo despierto.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="finding">
+      <header><span class="sev p2">MEDIO</span><h3>Las fotos ya vinculadas tambien dan una vuelta de mas</h3><span class="tag">leido en codigo</span></header>
+      <span class="where"><code>deezer.py:113</code> <code>get_picture_url</code></span>
+      <ul><li>Cada avatar vinculado apunta a <code>api.deezer.com/artist/{id}/image</code>, que redirige al CDN. Son dos pedidos por foto y la API de Deezer tiene el limite de 50 cada 5 s por IP: con 125 fotos en la Vista Canal, algunas pueden fallar y quedar en la inicial.</li></ul>
+      <div class="fix"><span class="eyebrow">Como arreglarlo</span><ul><li>Guardar la URL final del CDN cuando el Run vincula al artista. Sale junto con el arreglo de las fotos sin vincular.</li></ul></div>
+    </article>
+
+    <article class="finding">
+      <header><span class="sev p2">MEDIO</span><h3>La rueda del mouse pasa por JavaScript</h3><span class="tag">leido en codigo</span></header>
+      <span class="where"><code>base.html:75-97</code></span>
+      <ul><li>Un listener de <code>wheel</code> no pasivo en todo el documento cancela el scroll nativo y lo anima a mano. Cuando el navegador esta ocupado decodificando 190 imagenes o comparando el DOM, el scroll se traba, cosa que el scroll nativo no hace.</li></ul>
+      <div class="fix"><span class="eyebrow">Como arreglarlo</span><ul><li>Probar sin el handler una vez resueltas las fotos. Si la rueda corta te sigue gustando, dejarlo solo en los paneles y no en el documento.</li></ul></div>
+    </article>
+
+    <article class="finding">
+      <header><span class="sev p2">MEDIO</span><h3>Render Free: 0,1 CPU, un solo proceso y siestas</h3><span class="tag">leido en codigo y logs</span></header>
+      <span class="where"><code>render.yaml</code> &middot; <code>.github/workflows/despierta.yml</code></span>
+      <ul>
+        <li>Es el techo de todo lo anterior: cualquier trabajo de CPU en el servidor (TLS, Jinja) rinde un decimo.</li>
+        <li>Si el pinger externo falla, la web se duerme a los 15 minutos y la primera visita tarda ~50 s. El cron de Actions no alcanza como respaldo.</li>
+        <li>El cache de tokens y de biblioteca vive en memoria: cada deploy o siesta lo borra.</li>
+      </ul>
+      <div class="fix"><span class="eyebrow">Como arreglarlo</span><ul><li>Con costo cero no se cambia el plan. Se compensa sacando trabajo del servidor: fotos directas al CDN, respuestas parciales, estaticos cacheados.</li></ul></div>
+    </article>
+
+    <article class="finding">
+      <header><span class="sev p2">BAJO</span><h3>Detalles sueltos</h3></header>
+      <ul>
+        <li><code>/static</code> sale sin <code>Cache-Control</code>.</li>
+        <li>Google Fonts bloquea el primer pintado; se puede precargar o servir local.</li>
+        <li><code>htmx:afterRequest</code> (<code>base.html:57</code>) reordena todas las listas despues de cualquier request, tambien de los que no tocan listas.</li>
+        <li><code>WebCache.get</code> hace <code>deepcopy</code> de la biblioteca en cada lectura.</li>
+        <li><code>renew_session</code> reescribe la cookie en todas las respuestas, incluidas las fotos.</li>
+      </ul>
+    </article>
+  </section>
+
+  <section>
+    <h2>Orden sugerido</h2>
+    <ol class="plan">
+      <li><b>Fotos de artistas guardadas en la base y resueltas en tanda.</b> Saca los cuelgues de 8 a 26 s. Es el unico cambio que se nota solo.</li>
+      <li><b>Refresco de playlist en paralelo y con avance guardado.</b> Las playlists grandes dejan de quedar "Sin actualizar".</li>
+      <li><b>Navegacion parcial + estaticos cacheados.</b> Cambiar de Canal o entrar a Ajustes baja de 113-162 KB a lo que cambia.</li>
+      <li><b>Ajustes pinta con lo guardado.</b> Mismo patron que las playlists.</li>
+      <li><b>Flechas con respuesta inmediata y menos consultas.</b></li>
+      <li><b>Cache y minimo de letras en el Buscador.</b></li>
+      <li><b>Consultas unificadas y pool.</b> Se nota sobre todo corriendo local.</li>
+    </ol>
+    <p class="muted">No medido: tiempos por endpoint en prod (Render Free no expone metricas), tiempos reales de Spotify (no gaste cuota) y si Render comprime el HTML. La linea de tiempo sale de las horas de finalizacion en los logs de Render.</p>
+  </section>
+</main>
