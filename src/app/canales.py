@@ -350,6 +350,20 @@ def get_whitelist(conn, canal_id):
     return whitelist
 
 
+def get_whitelist_ids(conn, canal_id):
+    '''
+    Ids de la Whitelist del Canal, sin nombres ni fotos: alcanza para marcar en el Buscador los ya agregados.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            canal_id (int): id del Canal
+        Returns:
+            ids (set): ids de Spotify de los artistas
+    '''
+    rows = conn.execute('SELECT artist_id FROM whitelist_artists WHERE canal_id = %s', (canal_id,)).fetchall()
+    ids = {row[0] for row in rows}
+    return ids
+
+
 def refresh_sources(conn, access_token, canal, library):
     '''
     Pone al dia las Seed Playlists del Canal que cambiaron, leyendo por su Copia de playlist, y recalcula la Whitelist; una Lista manual no lee nada.

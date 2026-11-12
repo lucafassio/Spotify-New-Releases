@@ -5,7 +5,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import canales, web
+from app import canales, web, web_cache
 from app import spotify as spotify_api
 from app.spotify import ACCOUNTS_URL, API_URL
 from app.web import app, get_conn
@@ -34,6 +34,18 @@ def logged(db, spotify):
         yield {'client': client, 'user_id': user_id, 'spotify_user_id': spotify_user_id}
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def cooldowns():
+    '''
+    Descarta las pausas locales de call_api: todos los tests usan el mismo access token.
+    '''
+    spotify_api.clear_cooldowns()
+    try:
+        yield
+    finally:
+        spotify_api.clear_cooldowns()
 
 
 def playlist(playlist_id, name, owner, collaborative=False, snapshot='v1', total=10):
@@ -112,6 +124,96 @@ def test_search_dims_artists_already_added(logged, db, spotify):
     assert 'name="artist_id" value="dk"' in response.text
     assert 'name="artist_id" value="duki"' not in response.text
     assert 'id="res-duki" class="res added"' in response.text
+
+
+def test_search_repeats_text_from_cache_but_recomputes_added(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    found = spotify.get(f'{API_URL}/search').respond(json={'artists': {'items': [{'id': 'duki', 'name': 'Duki'}]}})
+
+    first = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'Duki'})
+    canales.add_manual_artist(db, canal_id, 'duki', 'Duki')
+    # mismo texto con otras mayusculas y espacios: sale del cache
+    second = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': '  duKI '})
+
+    assert found.call_count == 1
+    assert found.calls.last.request.url.params['q'] == 'duki'
+    assert 'name="artist_id" value="duki"' in first.text
+    assert 'id="res-duki" class="res added"' in second.text
+
+
+def test_search_cache_is_per_user_and_expires(logged, db, spotify, monkeypatch):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    found = spotify.get(f'{API_URL}/search').respond(json={'artists': {'items': [{'id': 'duki', 'name': 'Duki'}]}})
+    now = web_cache.time.monotonic()
+    monkeypatch.setattr(web_cache.time, 'monotonic', lambda: now)
+
+    logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duki'})
+    monkeypatch.setattr(web_cache.time, 'monotonic', lambda: now + web.SEARCH_TTL - 1)
+    logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duki'})
+    assert found.call_count == 1
+
+    monkeypatch.setattr(web_cache.time, 'monotonic', lambda: now + web.SEARCH_TTL + 1)
+    logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duki'})
+    assert found.call_count == 2
+
+    # reconectar limpia lo que busco ese User
+    web.search_cache.clear(logged['user_id'])
+    logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duki'})
+    assert found.call_count == 3
+
+
+def test_search_needs_two_characters(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    found = spotify.get(f'{API_URL}/search').respond(json={'artists': {'items': [{'id': 'duki', 'name': 'Duki'}]}})
+
+    for query in ('', 'd', '  d  '):
+        response = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': query})
+        assert response.status_code == 200
+        assert response.text.strip() == ''
+
+    assert not found.called
+
+
+def test_search_short_text_still_checks_the_canal(logged, spotify):
+    response = logged['client'].get('/canales/999999999/buscar', params={'q': 'd'}, follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers['location'] == '/'
+
+
+def test_search_rate_limit_shows_its_aviso_in_the_results(logged, db, spotify, cooldowns):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    limited = spotify.get(f'{API_URL}/search').respond(429, headers={'Retry-After': '30'})
+
+    response = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duki'}, headers={'HX-Request': 'true'})
+    # durante la pausa el cooldown de call_api corta antes de llamar a Spotify
+    again = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'bad bunny'}, headers={'HX-Request': 'true'})
+
+    assert response.status_code == 200
+    assert 'HX-Retarget' not in response.headers
+    assert response.headers['Retry-After'] == '30'
+    assert 'Spotify pidio una pausa' in response.text
+    assert 'data-n="Aviso de busqueda"' in response.text
+    assert 'Spotify pidio una pausa' in again.text
+    assert limited.call_count == 1
+
+
+def test_search_quota_exceeded_shows_its_aviso(logged, db, spotify, cooldowns):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    spotify.get(f'{API_URL}/search').respond(429, headers={'Retry-After': '86400'}, json={'error': {'status': 429, 'reason': 'QUOTA_EXCEEDED'}})
+
+    response = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duki'}, headers={'HX-Request': 'true'})
+
+    assert response.status_code == 200
+    assert 'cuota de consultas' in response.text
+
+
+def test_whitelist_ids_are_only_the_ids(logged, db):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    canales.add_manual_artist(db, canal_id, 'duki', 'Duki')
+    canales.add_manual_artist(db, canal_id, 'bb', 'Bad Bunny')
+
+    assert canales.get_whitelist_ids(db, canal_id) == {'duki', 'bb'}
 
 
 def test_retencion_and_guardado_are_saved(logged, db, spotify):
