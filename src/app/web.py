@@ -86,6 +86,7 @@ async def lifespan(app):
         spotify.close_http_client()
         spotify.clear_cooldowns()
         library_cache.clear()
+        search_cache.clear()
         token_cache.clear()
 
 
@@ -125,6 +126,10 @@ LOGIN_ERRORS = {
 TOKEN_TTL = 50 * 60
 token_cache = {}
 library_cache = WebCache()
+# el Buscador repite textos al borrar y reescribir: 10 minutos sin volver a Spotify
+SEARCH_TTL = 10 * 60
+SEARCH_MIN_CHARS = 2
+search_cache = WebCache(limit=256)
 
 
 @app.middleware('http')
@@ -310,8 +315,22 @@ def action_failed(request, message, retry=None):
 @app.exception_handler(spotify.QuotaExceeded)
 def spotify_limited(request, error):
     '''Traduce los limites de Spotify a un Aviso sin bloquear la accion.'''
+    message, retry = limit_notice(error)
+    return action_failed(request, message, retry)
+
+
+def limit_notice(error):
+    '''
+    Texto del Aviso y segundos de espera de un limite de Spotify.
+        Args:
+            error (Exception): RateLimited o QuotaExceeded
+        Returns:
+            message (str): aviso para el User
+            retry (int): segundos hasta que puede reintentar
+    '''
     message = 'Spotify alcanzo su cuota de consultas. Proba de nuevo mas tarde.' if isinstance(error, spotify.QuotaExceeded) else 'Spotify pidio una pausa. Espera un momento antes de volver a intentar.'
-    return action_failed(request, message, int(error.args[0]) if error.args else 1)
+    retry = int(error.args[0]) if error.args and error.args[0] is not None else 1
+    return message, retry
 
 
 @app.exception_handler(PoolTimeout)
@@ -668,6 +687,7 @@ def callback(request: Request, conn=Depends(get_conn)):
     # el access token cacheado puede ser del client anterior si cambio de modo
     token_cache.pop(login['user_id'], None)
     library_cache.clear(login['user_id'])
+    search_cache.clear(login['user_id'])
     request.session['user_id'] = login['user_id']
     request.session['display_name'] = profile.get('display_name') or profile['id']
     request.session['avatar'] = spotify.get_image_url(profile.get('images'), PROFILE_SIZE) or ''
@@ -696,6 +716,7 @@ def logout(request: Request):
     user_id = request.session.get('user_id')
     if user_id is not None:
         library_cache.clear(user_id)
+        search_cache.clear(user_id)
         token_cache.pop(user_id, None)
     request.session.clear()
     response = RedirectResponse('/', status_code=303)
@@ -1240,16 +1261,28 @@ def search_artists(request: Request, canal_id, user=Depends(require_user), conn=
             response (TemplateResponse): fragmento con los resultados
     '''
     canal = require_canal(conn, user, canal_id)
-    query = request.query_params.get('q', '').strip()
+    query = ' '.join(request.query_params.get('q', '').split())
     results = []
+    notice = None
+    retry = None
 
-    if query and not canales.uses_seed(conn, canal['id']):
-        # los que ya entran se muestran apagados para que el User vea que estan, sin poder sumarlos de nuevo
-        chosen = {artist['artist_id'] for artist in canales.get_whitelist(conn, canal['id'])}
-        results = [dict(artist, added=artist['id'] in chosen) for artist in spotify.search_artists(get_token(conn, user), query)]
+    # con una letra Spotify devuelve casi cualquier cosa: no gastamos cuota ni base
+    if len(query) >= SEARCH_MIN_CHARS and not canales.uses_seed(conn, canal['id']):
+        text = query.casefold()
+        try:
+            # el User va primero: el cache se limpia por User y el resultado depende del mercado de su token
+            found = search_cache.get((user['id'], 'search', text), lambda: spotify.search_artists(get_token(conn, user), text), ttl=SEARCH_TTL)
+        except (spotify.RateLimited, spotify.QuotaExceeded) as error:
+            notice, retry = limit_notice(error)
+        else:
+            # los que ya entran se muestran apagados para que el User vea que estan, sin poder sumarlos de nuevo
+            chosen = canales.get_whitelist_ids(conn, canal['id'])
+            results = [dict(artist, added=artist['id'] in chosen) for artist in found]
 
-    context = {'canal': canal, 'query': query, 'results': results}
+    context = {'canal': canal, 'query': query if len(query) >= SEARCH_MIN_CHARS else '', 'results': results, 'notice': notice}
     response = templates.TemplateResponse(request, '_busqueda.html', context)
+    if retry is not None:
+        response.headers['Retry-After'] = str(retry)
     return response
 
 
