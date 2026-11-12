@@ -43,7 +43,7 @@ agregados y alcanza con esa llamada. En cualquier otro caso se relee entera.
 
 ## Consequences
 
-- Hasta ~1 minuto despues de editar en Spotify (mas el cache de biblioteca de la web, 60 s) la
+- Hasta ~1 minuto despues de editar en Spotify (mas el cache de biblioteca de la web, 5 min desde #24) la
   fila puede decir "Al dia" sin estarlo. Se acepta a cambio de que repetir aperturas no gaste
   llamadas de items.
 - Un error posible y aceptado: sacar y meter un tema en el medio y ademas agregar otro al final

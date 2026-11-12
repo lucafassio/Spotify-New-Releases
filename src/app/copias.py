@@ -2,10 +2,12 @@ import unicodedata
 
 import httpx
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from app import spotify
 
-COPY_COLUMNS = 'playlist_id, position, name, owner_id, collaborative, snapshot_id, total, image_url, artists_snapshot_id, artists_total, last_track_uri'
+# partial_artists queda afuera: solo lo lee el refresco que sigue una lectura cortada
+COPY_COLUMNS = 'playlist_id, position, name, owner_id, collaborative, snapshot_id, total, image_url, artists_snapshot_id, artists_total, last_track_uri, partial_snapshot_id, partial_total'
 
 # lado en px de la Portada mas grande, al doble para pantallas de alta densidad
 COVER_SIZE = 112
@@ -137,31 +139,118 @@ def add_deezer_ids(conn, artists):
     return artists
 
 
-def read_changes(access_token, playlist, copy, known):
+def read_from(access_token, playlist, artists, offset):
     '''
-    Lee de Spotify lo minimo para poner al dia los artistas: solo la cola si fueron solo agregados, si no toda la playlist (ADR 0008).
+    Lee una playlist desde un offset hasta el final sumando sus artistas; si el tope corta, se queda con las paginas completas.
+        Args:
+            access_token (str): access token vigente
+            playlist (dict): playlist de GET /me/playlists
+            artists (dict): artistas de los items anteriores al offset, se modifica en el lugar
+            offset (int): posicion del primer item a leer
+        Returns:
+            read (dict): artists, last_track_uri, total de items cubiertos y complete
+    '''
+    try:
+        entries = spotify.get_playlist_entries(access_token, playlist['id'], offset, spotify.get_track_total(playlist))
+        complete = True
+    except spotify.PartialRead as cut:
+        # sin ninguna pagina nueva no hay avance que guardar: falla como un timeout
+        if not cut.entries:
+            raise
+        entries, complete = cut.entries, False
+
+    read = {
+        'artists': spotify.collect_artists(entries, artists),
+        'last_track_uri': spotify.get_entry_uri(entries[-1]) if entries else None,
+        'total': offset + len(entries),
+        'complete': complete,
+    }
+    return read
+
+
+def read_changes(access_token, playlist, copy, known, started=None):
+    '''
+    Lee de Spotify lo minimo para poner al dia los artistas: lo que falta de una lectura cortada, solo la cola si fueron solo agregados, si no toda la playlist (ADR 0008).
         Args:
             access_token (str): access token vigente
             playlist (dict): playlist de GET /me/playlists
             copy (dict): fila de playlist_copies
             known (dict): artistas guardados
+            started (dict): avance de una lectura cortada de esta misma version, con artists y total, o None
         Returns:
-            read (dict): artists, last_track_uri y total de items leidos
+            read (dict): artists, last_track_uri, total de items leidos y complete (False si el tope corto la lectura)
     '''
+    if started:
+        read = read_from(access_token, playlist, started['artists'], started['total'])
+        return read
+
     old_total = copy['artists_total']
+    total = spotify.get_track_total(playlist)
 
     # si el ultimo Track conocido sigue en su lugar, lo que crecio son agregados; alcanza con leer desde el
-    if copy['last_track_uri'] and old_total and spotify.get_track_total(playlist) > old_total:
-        entries = spotify.get_playlist_entries(access_token, playlist['id'], old_total - 1)
+    if copy['last_track_uri'] and old_total and total > old_total:
+        try:
+            entries = spotify.get_playlist_entries(access_token, playlist['id'], old_total - 1, total)
+            complete = True
+        except spotify.PartialRead as cut:
+            if not cut.entries:
+                raise
+            entries, complete = cut.entries, False
 
         if entries and spotify.get_entry_uri(entries[0]) == copy['last_track_uri']:
             artists = spotify.collect_artists(entries[1:], {artist_id: artist.copy() for artist_id, artist in known.items()})
-            read = {'artists': artists, 'last_track_uri': spotify.get_entry_uri(entries[-1]), 'total': old_total - 1 + len(entries)}
+            read = {'artists': artists, 'last_track_uri': spotify.get_entry_uri(entries[-1]), 'total': old_total - 1 + len(entries), 'complete': complete}
             return read
 
-    entries = spotify.get_playlist_entries(access_token, playlist['id'])
-    read = {'artists': spotify.collect_artists(entries), 'last_track_uri': spotify.get_entry_uri(entries[-1]) if entries else None, 'total': len(entries)}
+    read = read_from(access_token, playlist, {}, 0)
     return read
+
+
+def get_started(conn, user_id, playlist, copy):
+    '''
+    Busca el avance de una lectura cortada que todavia sirve: la playlist sigue en la misma version.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            user_id (int): id interno del User
+            playlist (dict): playlist de GET /me/playlists
+            copy (dict): fila de playlist_copies
+        Returns:
+            started (dict): artists y total, o None si no hay avance o la playlist cambio
+    '''
+    if copy['partial_total'] is None or copy['partial_snapshot_id'] != playlist.get('snapshot_id'):
+        return None
+
+    artists = conn.execute('SELECT partial_artists FROM playlist_copies WHERE user_id = %s AND playlist_id = %s', (user_id, playlist['id'])).fetchone()[0]
+    started = {'artists': artists or {}, 'total': copy['partial_total']}
+    return started
+
+
+def save_started(conn, user_id, playlist, read, known):
+    '''
+    Guarda lo leido por una lectura cortada sin dar la copia por al dia: los artistas nuevos se ven desde ya y nadie se borra hasta terminar.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            user_id (int): id interno del User
+            playlist (dict): playlist de GET /me/playlists
+            read (dict): resultado de read_changes con complete False
+            known (dict): artistas guardados
+        Returns:
+            added (dict): artistas que no estaban en la copia
+    '''
+    added = {artist_id: artist for artist_id, artist in read['artists'].items() if artist_id not in known}
+
+    if added:
+        with conn.cursor() as cur:
+            cur.executemany(
+                'INSERT INTO playlist_copy_artists (user_id, playlist_id, artist_id, name, feat, isrc) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING',
+                [(user_id, playlist['id'], artist_id, artist['name'], artist['feat'], artist['isrc']) for artist_id, artist in added.items()],
+            )
+
+    conn.execute(
+        'UPDATE playlist_copies SET partial_snapshot_id = %s, partial_total = %s, partial_artists = %s WHERE user_id = %s AND playlist_id = %s',
+        (playlist.get('snapshot_id'), read['total'], Jsonb(read['artists']), user_id, playlist['id']),
+    )
+    return added
 
 
 def failed_refresh(error):
@@ -185,7 +274,7 @@ def refresh(conn, access_token, user_id, playlist):
             user_id (int): id interno del User
             playlist (dict): playlist de GET /me/playlists
         Returns:
-            result (dict): status (same, changed o failed), first_read, added (lista de artistas), removed (ids) y error si fallo
+            result (dict): status (same, changed, partial o failed), first_read, added (lista de artistas), removed (ids) y error si fallo
     '''
     copy = get_copy(conn, user_id, playlist['id'])
     first_read = copy['artists_snapshot_id'] is None
@@ -195,11 +284,18 @@ def refresh(conn, access_token, user_id, playlist):
         return result
 
     known = get_artists(conn, user_id, playlist['id'])
+    started = get_started(conn, user_id, playlist, copy)
 
     try:
-        read = read_changes(access_token, playlist, copy, known)
+        read = read_changes(access_token, playlist, copy, known, started)
     except READ_ERRORS as error:
         return failed_refresh(error)
+
+    # el tope de la web corto la lectura: queda el avance y la copia sigue sin estar al dia (#24)
+    if not read['complete']:
+        added = save_started(conn, user_id, playlist, read, known)
+        result = {'status': 'partial', 'first_read': first_read, 'added': sorted_artists(added), 'removed': []}
+        return result
 
     artists = read['artists']
     conn.execute('DELETE FROM playlist_copy_artists WHERE user_id = %s AND playlist_id = %s AND NOT (artist_id = ANY(%s))', (user_id, playlist['id'], list(artists)))
@@ -214,7 +310,10 @@ def refresh(conn, access_token, user_id, playlist):
         )
 
     conn.execute(
-        'UPDATE playlist_copies SET artists_snapshot_id = %s, artists_total = %s, last_track_uri = %s WHERE user_id = %s AND playlist_id = %s',
+        '''
+        UPDATE playlist_copies SET artists_snapshot_id = %s, artists_total = %s, last_track_uri = %s, partial_snapshot_id = NULL, partial_total = NULL, partial_artists = NULL
+        WHERE user_id = %s AND playlist_id = %s
+        ''',
         (playlist.get('snapshot_id'), read['total'], read['last_track_uri'], user_id, playlist['id']),
     )
 

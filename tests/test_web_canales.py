@@ -1,9 +1,12 @@
+import re
 import uuid
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from app import canales, web
+from app import spotify as spotify_api
 from app.spotify import ACCOUNTS_URL, API_URL
 from app.web import app, get_conn
 from test_web import start_login
@@ -178,3 +181,152 @@ def test_run_now_queues_the_run(logged, db, monkeypatch):
 
 def test_run_now_button_needs_a_canal(logged):
     assert 'Buscar novedades ahora' not in logged['client'].get('/').text
+
+
+# Refresco rapido y reanudable (#24)
+
+
+def big_playlist(spotify, playlist_id, total, fail=None, first=0):
+    '''
+    Mockea los items de una playlist grande, un artista distinto por cancion, respondiendo cada pagina segun su offset.
+        Args:
+            fail (dict): offset -> respuesta o excepcion para esa pagina
+            first (int): numero del primer artista, para armar otra version de la playlist
+        Returns:
+            offsets (list): offsets pedidos, en el orden en que llegaron
+    '''
+    offsets = []
+
+    def answer(request):
+        offset = int(request.url.params.get('offset', 0))
+        offsets.append(offset)
+        failure = (fail or {}).get(offset)
+        if isinstance(failure, Exception):
+            raise failure
+        if failure is not None:
+            return failure
+        items = [{'item': {'type': 'track', 'uri': f'spotify:track:t{n}', 'artists': [{'id': f'a{n}', 'name': f'Artista {n:03}'}]}} for n in range(first + offset, first + min(offset + 50, total))]
+        return httpx.Response(200, json={'items': items, 'next': None, 'total': total})
+
+    spotify.get(f'{API_URL}/playlists/{playlist_id}/items').mock(side_effect=answer)
+    return offsets
+
+
+@pytest.fixture
+def grande(logged, db, spotify):
+    '''
+    Canal en Lista manual y una playlist propia de 150 canciones en la biblioteca.
+        Returns:
+            setup (dict): client, user_id, pid, open, refresh y library (re-mockea la biblioteca)
+    '''
+    owner = logged['spotify_user_id']
+    pid, target = f'g{uuid.uuid4().hex[:10]}', f't{uuid.uuid4().hex[:10]}'
+    canal_id = canales.create_canal(db, logged['user_id'], target, 'Radar', True)
+    db.commit()
+
+    def library(snapshot='v1', total=150):
+        web.library_cache.clear()
+        return spotify.get(f'{API_URL}/me/playlists').respond(json={'items': [playlist(pid, 'Grande', owner, snapshot=snapshot, total=total), playlist(target, 'Radar', owner)], 'next': None})
+
+    library()
+    logged['client'].get(f'/canales/{canal_id}')
+    base = f'/canales/{canal_id}/playlists/{pid}'
+    return {**logged, 'pid': pid, 'open': base, 'refresh': f'{base}/refrescar', 'library': library}
+
+
+def copy_state(db, user_id, playlist_id):
+    '''
+    Estado de la Copia de playlist: version al dia, avance guardado y artistas guardados.
+        Returns:
+            state (tuple): artists_snapshot_id, partial_total y cantidad de artistas
+    '''
+    row = db.execute('SELECT artists_snapshot_id, partial_total FROM playlist_copies WHERE user_id = %s AND playlist_id = %s', (user_id, playlist_id)).fetchone()
+    count = db.execute('SELECT count(*) FROM playlist_copy_artists WHERE user_id = %s AND playlist_id = %s', (user_id, playlist_id)).fetchone()[0]
+    return (*row, count)
+
+
+def test_cut_first_read_shows_what_it_read_and_the_next_refresh_resumes(grande, db, spotify):
+    offsets = big_playlist(spotify, grande['pid'], 150, fail={100: httpx.ReadTimeout('tope')})
+
+    cut = grande['client'].get(grande['refresh'])
+    reopened = grande['client'].get(grande['open'])
+
+    assert sorted(offsets) == [0, 50, 100]
+    assert 'Leida en parte' in cut.text
+    assert 'Artista 099' in cut.text
+    assert 'Artista 100' not in cut.text
+    assert copy_state(db, grande['user_id'], grande['pid']) == (None, 100, 100)
+    assert 'Artista 099' in reopened.text
+    assert 'Cargando artistas' not in reopened.text
+
+    offsets = big_playlist(spotify, grande['pid'], 150)
+    done = grande['client'].get(grande['refresh'])
+
+    assert offsets == [100]
+    assert 'Al dia' in done.text
+    assert 'Artista 000' in done.text and 'Artista 149' in done.text
+    assert copy_state(db, grande['user_id'], grande['pid']) == ('v1', None, 150)
+
+
+def test_cut_read_starts_over_if_the_playlist_changed(grande, db, spotify):
+    big_playlist(spotify, grande['pid'], 150, fail={100: httpx.ReadTimeout('tope')})
+    grande['client'].get(grande['refresh'])
+    grande['library'](snapshot='v2', total=120)
+
+    offsets = big_playlist(spotify, grande['pid'], 120, first=500)
+    done = grande['client'].get(grande['refresh'])
+
+    assert sorted(offsets) == [0, 50, 100]
+    assert 'Al dia' in done.text
+    # lo leido de la version vieja que ya no esta se va al terminar
+    assert 'Artista 000' not in done.text
+    assert copy_state(db, grande['user_id'], grande['pid']) == ('v2', None, 120)
+
+
+def test_cut_reread_shows_nuevos_and_drops_nothing_until_it_ends(grande, db, spotify):
+    big_playlist(spotify, grande['pid'], 150)
+    grande['client'].get(grande['refresh'])
+    grande['library'](snapshot='v2', total=150)
+    big_playlist(spotify, grande['pid'], 150, first=100, fail={100: httpx.ReadTimeout('tope')})
+
+    cut = grande['client'].get(grande['refresh'])
+
+    assert 'Leida en parte' in cut.text
+    assert '50 artistas nuevos' in cut.text
+    assert re.search(r'id="art-[^"]+" hx-swap-oob="delete"', cut.text) is None
+    assert copy_state(db, grande['user_id'], grande['pid']) == ('v1', 100, 200)
+
+    offsets = big_playlist(spotify, grande['pid'], 150, first=100)
+    done = grande['client'].get(grande['refresh'])
+
+    assert offsets == [100]
+    assert '50 artistas nuevos' in done.text
+    assert f'id="art-{grande["pid"]}-a0" hx-swap-oob="delete"' in done.text
+    assert copy_state(db, grande['user_id'], grande['pid']) == ('v2', None, 150)
+
+
+def test_rate_limit_in_a_parallel_read_saves_nothing(grande, db, spotify):
+    limited = httpx.Response(429, headers={'Retry-After': '30'}, json={'error': {'status': 429}})
+    big_playlist(spotify, grande['pid'], 150, fail={50: limited})
+    spotify_api.clear_cooldowns()
+
+    try:
+        refreshed = grande['client'].get(grande['refresh'])
+    finally:
+        spotify_api.clear_cooldowns()
+
+    assert 'Sin actualizar' in refreshed.text
+    assert 'No pudimos leer esta playlist' in refreshed.text
+    assert copy_state(db, grande['user_id'], grande['pid']) == (None, None, 0)
+
+
+def test_opening_playlists_in_a_row_reads_the_library_once(grande, spotify):
+    route = grande['library']()
+    route.reset()
+    big_playlist(spotify, grande['pid'], 150)
+
+    grande['client'].get(grande['refresh'])
+    grande['client'].get(grande['open'])
+    grande['client'].get(grande['refresh'])
+
+    assert route.call_count == 1

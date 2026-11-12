@@ -4,6 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from app import web, web_cache
 from app.web_cache import WebCache
 
 
@@ -65,3 +66,27 @@ def test_snapshot_change_uses_new_artists_and_clear_keeps_other_users():
     assert cache.get((1, 'artists', 'p1', 'v2'), lambda: ['new']) == ['new']
     cache.clear(1)
     assert list(cache.entries) == [(2, 'library')]
+
+
+def test_library_lasts_five_minutes_and_a_hit_does_not_touch_the_db(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(web_cache.time, 'monotonic', lambda: now[0])
+    fetch = Mock(return_value=[{'id': 'p1'}])
+    save = Mock()
+    monkeypatch.setattr(web.spotify, 'get_my_playlists', fetch)
+    monkeypatch.setattr(web.copias, 'save_library', save)
+    monkeypatch.setattr(web.canales, 'sync_target_names', Mock())
+    monkeypatch.setattr(web, 'get_token', lambda *args: 'token')
+    monkeypatch.setattr(web, 'library_cache', WebCache())
+    user, conn = {'id': 7}, Mock()
+
+    web.sync_library(conn, user)
+    now[0] += 4 * 60
+    web.sync_library(conn, user)
+    web.get_library(conn, user)
+
+    assert fetch.call_count == save.call_count == conn.commit.call_count == 1
+
+    now[0] += 61
+    assert web.sync_library(conn, user) == [{'id': 'p1'}]
+    assert fetch.call_count == save.call_count == 2

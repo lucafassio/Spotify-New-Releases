@@ -126,6 +126,9 @@ TOKEN_TTL = 50 * 60
 token_cache = {}
 library_cache = WebCache()
 
+# GET /me/playlists tarda 30 a 60 s en reflejar una edicion (ADR 0008): abrir varias playlists seguidas la pide una vez (#24)
+LIBRARY_TTL = 5 * 60
+
 
 @app.middleware('http')
 async def interactive_spotify(request: Request, call_next):
@@ -218,19 +221,26 @@ def get_token(conn, user):
 
 def get_library(conn, user):
     '''
-    Reutiliza la biblioteca del User durante un minuto entre acciones.
+    Reutiliza la biblioteca del User durante cinco minutos entre acciones; cada vez que la trae de Spotify deja al dia las copias y los nombres de las Targets.
         Args:
             conn (psycopg.Connection): conexion del request
             user (dict): User de la sesion
         Returns:
             playlists (list): playlists del User
     '''
-    return library_cache.get((user['id'], 'library'), lambda: spotify.get_my_playlists(get_token(conn, user)))
+    def load():
+        playlists = spotify.get_my_playlists(get_token(conn, user))
+        copias.save_library(conn, user['id'], playlists)
+        canales.sync_target_names(conn, user['id'], playlists)
+        conn.commit()
+        return playlists
+
+    return library_cache.get((user['id'], 'library'), load, ttl=LIBRARY_TTL)
 
 
 def sync_library(conn, user):
     '''
-    Revisa la biblioteca en Spotify, con el minuto de cache, y deja al dia las copias y los nombres de las Targets.
+    Revisa la biblioteca en Spotify, con los cinco minutos de cache; las copias ya quedaron guardadas cuando se trajo, asi un acierto no toca la base.
         Args:
             conn (psycopg.Connection): conexion del request
             user (dict): User de la sesion
@@ -238,9 +248,6 @@ def sync_library(conn, user):
             playlists (list): playlists del User
     '''
     playlists = get_library(conn, user)
-    copias.save_library(conn, user['id'], playlists)
-    canales.sync_target_names(conn, user['id'], playlists)
-    conn.commit()
     return playlists
 
 
@@ -856,7 +863,7 @@ def load_copies(conn, user, canal, fresh=False):
             conn (psycopg.Connection): conexion del request
             user (dict): User de la sesion
             canal (dict): fila de canales
-            fresh (bool): True revisa igual, con el minuto de cache
+            fresh (bool): True revisa igual, con los cinco minutos de cache
         Returns:
             copies (list): filas de playlist_copies
     '''
@@ -903,7 +910,8 @@ def visible_artists(conn, user, copy, whitelist):
         Returns:
             artists (list): filas en orden alfabetico, o None si la playlist nunca se leyo
     '''
-    if copy['artists_snapshot_id'] is None:
+    # una primera lectura cortada por el tope ya muestra lo leido hasta ahi (#24)
+    if copy['artists_snapshot_id'] is None and copy['partial_total'] is None:
         return None
 
     chosen = {artist['artist_id'] for artist in whitelist}
@@ -1053,22 +1061,29 @@ def refresh_playlist(request: Request, canal_id, playlist_id, user=Depends(requi
     if copy is None or canales.uses_seed(conn, canal['id']):
         return HTMLResponse('')
 
-    never_read = copy['artists_snapshot_id'] is None
+    never_read = copy['artists_snapshot_id'] is None and copy['partial_total'] is None
     result = refresh_copy(conn, user, playlist_id)
-    conn.commit()
+    context = {'canal': canal, 'open_id': playlist_id, 'status': result['status'], 'never_read': never_read, 'first_read': result['first_read'], 'remaining': [], 'nuevos': [], 'gone': []}
 
-    whitelist = canales.get_whitelist(conn, canal['id'])
-    chosen = {artist['artist_id'] for artist in whitelist}
-    context = {
-        'canal': canal,
-        'open_id': playlist_id,
-        'failed': result['status'] == 'failed',
-        'never_read': never_read,
-        'first_read': result['first_read'],
-        'remaining': visible_artists(conn, user, copias.get_copy(conn, user['id'], playlist_id) or copy, whitelist) or [],
-        'nuevos': copias.add_deezer_ids(conn, [artist for artist in result['added'] if artist['artist_id'] not in chosen]),
-        'gone': [artist_id for artist_id in result['removed'] if artist_id not in chosen],
-    }
+    # al dia o sin leer nada solo cambia el Indicador de lectura: no hace falta la Whitelist ni los artistas
+    if result['status'] in ('same', 'failed'):
+        return templates.TemplateResponse(request, '_playlist_refresh.html', context)
+
+    conn.commit()
+    chosen = {artist['artist_id'] for artist in canales.get_whitelist(conn, canal['id'])}
+    gone = [artist_id for artist_id in result['removed'] if artist_id not in chosen]
+    context['gone'] = gone
+
+    # la lista entera solo se pinta en la primera lectura, o para saber si quedo vacia tras una baja
+    if result['first_read'] or gone:
+        context['remaining'] = [artist for artist in copias.sorted_artists(copias.get_artists(conn, user['id'], playlist_id)) if artist['artist_id'] not in chosen]
+    if not result['first_read']:
+        context['nuevos'] = [artist for artist in result['added'] if artist['artist_id'] not in chosen]
+
+    shown = context['remaining'] if result['first_read'] else context['nuevos']
+    if shown:
+        copias.add_deezer_ids(conn, shown)
+
     return templates.TemplateResponse(request, '_playlist_refresh.html', context)
 
 

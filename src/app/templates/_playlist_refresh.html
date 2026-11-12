@@ -1,7 +1,10 @@
 {% import '_macros.html' as ui %}
 {# los ids llevan la playlist: si el User ya plego la fila, esta respuesta no encuentra nada que tocar #}
-<span id="ind-{{ open_id }}" hx-swap-oob="outerHTML">{{ 'Sin actualizar' if failed else 'Al dia' }}</span>
-{% if failed %}
+{# partial: el tope corto la lectura; se ve lo leido hasta ahi y el proximo refresco sigue desde ahi (#24) #}
+{% if status == 'failed' %}<span id="ind-{{ open_id }}" hx-swap-oob="outerHTML">Sin actualizar</span>
+{% elif status == 'partial' %}<span id="ind-{{ open_id }}" hx-swap-oob="outerHTML" title="Sigue leyendo la proxima vez que la abras">Leida en parte</span>
+{% else %}<span id="ind-{{ open_id }}" hx-swap-oob="outerHTML">Al dia</span>{% endif %}
+{% if status == 'failed' %}
 {% if never_read %}<div id="artistas-{{ open_id }}" hx-swap-oob="innerHTML"><small>No pudimos leer esta playlist. Proba mas tarde.</small></div>{% endif %}
 {% elif first_read %}
 <div id="artistas-{{ open_id }}" hx-swap-oob="innerHTML">{% for artist in remaining %}{{ ui.playlist_artist(canal.id, open_id, artist) }}{% else %}{{ ui.all_chosen(open_id) }}{% endfor %}</div>
