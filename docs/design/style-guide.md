@@ -153,7 +153,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Fila de playlist | Portada, nombre, cantidad de canciones y Boton ver artistas |
 | Fila no disponible | Fila gris al fondo de la lista, dice "No disponible" y no se despliega: playlists ajenas no colaborativas y la Target de este Canal |
 | Boton ver artistas | Flecha que despliega la fila; una sola abierta a la vez |
-| Indicador de lectura | Arriba de la Columna izquierda, fijo, mientras hay una fila abierta: "Buscando...", "Al dia" o "Sin actualizar" |
+| Indicador de lectura | Arriba de la Columna izquierda, fijo, mientras hay una fila abierta: "Buscando...", "Al dia", "Sin actualizar" o "Leida en parte" (Spotify no llego a mandar toda la playlist a tiempo: se ven los artistas leidos hasta ahi y la proxima apertura sigue desde ahi) |
 | Artistas de la playlist | Filas de artista en orden alfabetico, invitados incluidos, sin los que ya estan en la Columna derecha. Si no queda ninguno: "Ya estan todos". Si nunca se pudo leer: "No pudimos leer esta playlist. Proba mas tarde." |
 | Bloque de nuevos | Al fondo de la fila abierta, apartado: "2 artistas nuevos" y sus Filas de artista en orden alfabetico. Dura hasta plegar la playlist; al volver a abrirla se mezclan con el resto |
 | Columna derecha | "Quienes entran": la Whitelist del Canal en Filas de artista, en orden alfabetico. Vacia: "Elegi artistas desde una playlist o buscalos." |
