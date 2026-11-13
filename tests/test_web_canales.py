@@ -1,9 +1,12 @@
+import re
 import uuid
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import canales, web
+from app import canales, web, web_cache
+from app import spotify as spotify_api
 from app.spotify import ACCOUNTS_URL, API_URL
 from app.web import app, get_conn
 from test_web import start_login
@@ -31,6 +34,18 @@ def logged(db, spotify):
         yield {'client': client, 'user_id': user_id, 'spotify_user_id': spotify_user_id}
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def cooldowns():
+    '''
+    Descarta las pausas locales de call_api: todos los tests usan el mismo access token.
+    '''
+    spotify_api.clear_cooldowns()
+    try:
+        yield
+    finally:
+        spotify_api.clear_cooldowns()
 
 
 def playlist(playlist_id, name, owner, collaborative=False, snapshot='v1', total=10):
@@ -79,6 +94,18 @@ def test_create_canal_with_own_playlist(logged, db, spotify):
     assert canal['target_created_by_bot'] is False
 
 
+def test_create_canal_with_own_playlist_reuses_the_cached_library(logged, db, spotify):
+    route = mock_library(spotify, logged['spotify_user_id'])
+    client = logged['client']
+
+    client.get('/canales/nuevo?tipo=mia')
+    response = client.post('/canales', data={'tipo': 'mia', 'playlist_id': 'mia'})
+
+    assert 'Columna izquierda' in response.text
+    assert route.call_count == 1
+    assert canales.list_canales(db, logged['user_id'])[0]['target_playlist_id'] == 'mia'
+
+
 def test_cannot_target_a_playlist_of_someone_else(logged, db, spotify):
     mock_library(spotify, logged['spotify_user_id'])
 
@@ -109,6 +136,96 @@ def test_search_dims_artists_already_added(logged, db, spotify):
     assert 'name="artist_id" value="dk"' in response.text
     assert 'name="artist_id" value="duki"' not in response.text
     assert 'id="res-duki" class="res added"' in response.text
+
+
+def test_search_repeats_text_from_cache_but_recomputes_added(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    found = spotify.get(f'{API_URL}/search').respond(json={'artists': {'items': [{'id': 'duki', 'name': 'Duki'}]}})
+
+    first = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'Duki'})
+    canales.add_manual_artist(db, canal_id, 'duki', 'Duki')
+    # mismo texto con otras mayusculas y espacios: sale del cache
+    second = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': '  duKI '})
+
+    assert found.call_count == 1
+    assert found.calls.last.request.url.params['q'] == 'duki'
+    assert 'name="artist_id" value="duki"' in first.text
+    assert 'id="res-duki" class="res added"' in second.text
+
+
+def test_search_cache_is_per_user_and_expires(logged, db, spotify, monkeypatch):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    found = spotify.get(f'{API_URL}/search').respond(json={'artists': {'items': [{'id': 'duki', 'name': 'Duki'}]}})
+    now = web_cache.time.monotonic()
+    monkeypatch.setattr(web_cache.time, 'monotonic', lambda: now)
+
+    logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duki'})
+    monkeypatch.setattr(web_cache.time, 'monotonic', lambda: now + web.SEARCH_TTL - 1)
+    logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duki'})
+    assert found.call_count == 1
+
+    monkeypatch.setattr(web_cache.time, 'monotonic', lambda: now + web.SEARCH_TTL + 1)
+    logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duki'})
+    assert found.call_count == 2
+
+    # reconectar limpia lo que busco ese User
+    web.search_cache.clear(logged['user_id'])
+    logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duki'})
+    assert found.call_count == 3
+
+
+def test_search_needs_two_characters(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    found = spotify.get(f'{API_URL}/search').respond(json={'artists': {'items': [{'id': 'duki', 'name': 'Duki'}]}})
+
+    for query in ('', 'd', '  d  '):
+        response = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': query})
+        assert response.status_code == 200
+        assert response.text.strip() == ''
+
+    assert not found.called
+
+
+def test_search_short_text_still_checks_the_canal(logged, spotify):
+    response = logged['client'].get('/canales/999999999/buscar', params={'q': 'd'}, follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers['location'] == '/'
+
+
+def test_search_rate_limit_shows_its_aviso_in_the_results(logged, db, spotify, cooldowns):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    limited = spotify.get(f'{API_URL}/search').respond(429, headers={'Retry-After': '30'})
+
+    response = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duki'}, headers={'HX-Request': 'true'})
+    # durante la pausa el cooldown de call_api corta antes de llamar a Spotify
+    again = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'bad bunny'}, headers={'HX-Request': 'true'})
+
+    assert response.status_code == 200
+    assert 'HX-Retarget' not in response.headers
+    assert response.headers['Retry-After'] == '30'
+    assert 'Spotify pidio una pausa' in response.text
+    assert 'data-n="Aviso de busqueda"' in response.text
+    assert 'Spotify pidio una pausa' in again.text
+    assert limited.call_count == 1
+
+
+def test_search_quota_exceeded_shows_its_aviso(logged, db, spotify, cooldowns):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    spotify.get(f'{API_URL}/search').respond(429, headers={'Retry-After': '86400'}, json={'error': {'status': 429, 'reason': 'QUOTA_EXCEEDED'}})
+
+    response = logged['client'].get(f'/canales/{canal_id}/buscar', params={'q': 'duki'}, headers={'HX-Request': 'true'})
+
+    assert response.status_code == 200
+    assert 'cuota de consultas' in response.text
+
+
+def test_whitelist_ids_are_only_the_ids(logged, db):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    canales.add_manual_artist(db, canal_id, 'duki', 'Duki')
+    canales.add_manual_artist(db, canal_id, 'bb', 'Bad Bunny')
+
+    assert canales.get_whitelist_ids(db, canal_id) == {'duki', 'bb'}
 
 
 def test_retencion_and_guardado_are_saved(logged, db, spotify):
@@ -156,11 +273,101 @@ def test_spotify_failure_shows_aviso_instead_of_500(logged, db, spotify):
 
 
 def test_every_view_carries_the_css_of_all_views(logged):
-    # hx-boost cambia solo el body: si Inicio no trae el CSS de la Vista Canal, al navegar las filas se desarman
+    # la navegacion cambia solo el Panel: si Inicio no trae el CSS de la Vista Canal, al navegar las filas se desarman
+    response = logged['client'].get('/')
+    css = logged['client'].get(web.static_url('app.css'))
+
+    assert f'href="{web.static_url("app.css")}"' in response.text
+    assert '.pl-row' in css.text
+    assert '.optlist' in css.text
+
+
+def test_page_has_no_big_inline_css_or_js(logged):
     response = logged['client'].get('/')
 
-    assert '.pl-row' in response.text
-    assert '.optlist' in response.text
+    assert '.pl-row' not in response.text
+    assert 'addEventListener' not in response.text
+    assert f'<script src="{web.static_url("app.js")}" defer></script>' in response.text
+    assert f'<script src="{web.static_url("htmx-2.0.4.min.js")}" defer></script>' in response.text
+    assert 'unpkg.com' not in response.text
+
+
+BOOSTED = {'HX-Request': 'true', 'HX-Boosted': 'true'}
+
+
+def views(db, logged, spotify):
+    '''
+    Paths de las cuatro vistas del dashboard, con un Canal propio y la biblioteca mockeada.
+        Returns:
+            paths (list): Inicio, Canal, Ajustes y Nuevo Canal
+    '''
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    mock_library(spotify, logged['spotify_user_id'])
+    paths = ['/', f'/canales/{canal_id}', f'/canales/{canal_id}/ajustes', '/canales/nuevo']
+    return paths
+
+
+def test_direct_entry_gets_the_whole_page(logged, db, spotify):
+    for path in views(db, logged, spotify):
+        response = logged['client'].get(path)
+
+        assert response.text.startswith('<!doctype html>'), path
+        assert 'data-n="Perfil"' in response.text, path
+        assert '<div id="vista" class="vista">' in response.text, path
+
+
+def test_boosted_click_gets_only_panel_and_sidebar(logged, db, spotify):
+    for path in views(db, logged, spotify):
+        response = logged['client'].get(path, headers=BOOSTED)
+
+        assert '<html' not in response.text, path
+        assert 'data-n="Perfil"' not in response.text, path
+        assert '<title>Radar de Viernes</title>' in response.text, path
+        assert 'data-n="Panel"' in response.text, path
+        assert 'id="nav-inicio" hx-swap-oob="outerHTML"' in response.text, path
+        assert 'id="lista-canales" hx-swap-oob="outerHTML"' in response.text, path
+        assert 'HX-Boosted' in response.headers['vary'], path
+        assert response.headers['cache-control'] == 'no-store', path
+
+
+def test_boosted_click_marks_its_row_in_the_sidebar(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    mock_library(spotify, logged['spotify_user_id'])
+
+    canal = logged['client'].get(f'/canales/{canal_id}', headers=BOOSTED)
+    home = logged['client'].get('/', headers=BOOSTED)
+
+    assert 'class="nav-row on" href="/canales/' in canal.text
+    assert 'class="nav-row on" href="/"' not in canal.text
+    assert 'class="nav-row on" href="/"' in home.text
+    assert 'id="canal-panel"' in canal.text
+    # la vista abierta no se precarga: el mouse que quedo encima tras el click no vuelve a pedirla
+    assert 'href="/" preload="mouseover"' in canal.text
+    assert 'href="/" preload="mouseover"' not in home.text
+    assert f'href="/canales/{canal_id}" preload="mouseover"' in home.text
+    assert f'href="/canales/{canal_id}" preload="mouseover"' not in canal.text
+
+
+def test_preloaded_view_is_cached_for_a_few_seconds(logged):
+    response = logged['client'].get('/', headers=dict(BOOSTED, **{'HX-Preloaded': 'true'}))
+
+    assert response.headers['cache-control'] == f'private, max-age={web.PRELOAD_AGE}'
+
+
+def test_session_cookie_is_not_rewritten_on_every_click(logged):
+    # una cookie nueva por respuesta rompe el Vary: Cookie y la vista precargada nunca se reusa
+    page = logged['client'].get('/')
+    click = logged['client'].get('/', headers=BOOSTED)
+
+    assert 'set-cookie' not in page.headers
+    assert 'set-cookie' not in click.headers
+
+
+def test_back_without_snapshot_gets_the_whole_page(logged):
+    # htmx pide la pagina para reemplazar el body cuando no tiene la vista guardada
+    response = logged['client'].get('/', headers=dict(BOOSTED, **{'HX-History-Restore-Request': 'true'}))
+
+    assert response.text.startswith('<!doctype html>')
 
 
 def test_run_now_queues_the_run(logged, db, monkeypatch):
@@ -178,3 +385,152 @@ def test_run_now_queues_the_run(logged, db, monkeypatch):
 
 def test_run_now_button_needs_a_canal(logged):
     assert 'Buscar novedades ahora' not in logged['client'].get('/').text
+
+
+# Refresco rapido y reanudable (#24)
+
+
+def big_playlist(spotify, playlist_id, total, fail=None, first=0):
+    '''
+    Mockea los items de una playlist grande, un artista distinto por cancion, respondiendo cada pagina segun su offset.
+        Args:
+            fail (dict): offset -> respuesta o excepcion para esa pagina
+            first (int): numero del primer artista, para armar otra version de la playlist
+        Returns:
+            offsets (list): offsets pedidos, en el orden en que llegaron
+    '''
+    offsets = []
+
+    def answer(request):
+        offset = int(request.url.params.get('offset', 0))
+        offsets.append(offset)
+        failure = (fail or {}).get(offset)
+        if isinstance(failure, Exception):
+            raise failure
+        if failure is not None:
+            return failure
+        items = [{'item': {'type': 'track', 'uri': f'spotify:track:t{n}', 'artists': [{'id': f'a{n}', 'name': f'Artista {n:03}'}]}} for n in range(first + offset, first + min(offset + 50, total))]
+        return httpx.Response(200, json={'items': items, 'next': None, 'total': total})
+
+    spotify.get(f'{API_URL}/playlists/{playlist_id}/items').mock(side_effect=answer)
+    return offsets
+
+
+@pytest.fixture
+def grande(logged, db, spotify):
+    '''
+    Canal en Lista manual y una playlist propia de 150 canciones en la biblioteca.
+        Returns:
+            setup (dict): client, user_id, pid, open, refresh y library (re-mockea la biblioteca)
+    '''
+    owner = logged['spotify_user_id']
+    pid, target = f'g{uuid.uuid4().hex[:10]}', f't{uuid.uuid4().hex[:10]}'
+    canal_id = canales.create_canal(db, logged['user_id'], target, 'Radar', True)
+    db.commit()
+
+    def library(snapshot='v1', total=150):
+        web.library_cache.clear()
+        return spotify.get(f'{API_URL}/me/playlists').respond(json={'items': [playlist(pid, 'Grande', owner, snapshot=snapshot, total=total), playlist(target, 'Radar', owner)], 'next': None})
+
+    library()
+    logged['client'].get(f'/canales/{canal_id}')
+    base = f'/canales/{canal_id}/playlists/{pid}'
+    return {**logged, 'pid': pid, 'open': base, 'refresh': f'{base}/refrescar', 'library': library}
+
+
+def copy_state(db, user_id, playlist_id):
+    '''
+    Estado de la Copia de playlist: version al dia, avance guardado y artistas guardados.
+        Returns:
+            state (tuple): artists_snapshot_id, partial_total y cantidad de artistas
+    '''
+    row = db.execute('SELECT artists_snapshot_id, partial_total FROM playlist_copies WHERE user_id = %s AND playlist_id = %s', (user_id, playlist_id)).fetchone()
+    count = db.execute('SELECT count(*) FROM playlist_copy_artists WHERE user_id = %s AND playlist_id = %s', (user_id, playlist_id)).fetchone()[0]
+    return (*row, count)
+
+
+def test_cut_first_read_shows_what_it_read_and_the_next_refresh_resumes(grande, db, spotify):
+    offsets = big_playlist(spotify, grande['pid'], 150, fail={100: httpx.ReadTimeout('tope')})
+
+    cut = grande['client'].get(grande['refresh'])
+    reopened = grande['client'].get(grande['open'])
+
+    assert sorted(offsets) == [0, 50, 100]
+    assert 'Leida en parte' in cut.text
+    assert 'Artista 099' in cut.text
+    assert 'Artista 100' not in cut.text
+    assert copy_state(db, grande['user_id'], grande['pid']) == (None, 100, 100)
+    assert 'Artista 099' in reopened.text
+    assert 'Cargando artistas' not in reopened.text
+
+    offsets = big_playlist(spotify, grande['pid'], 150)
+    done = grande['client'].get(grande['refresh'])
+
+    assert offsets == [100]
+    assert 'Al dia' in done.text
+    assert 'Artista 000' in done.text and 'Artista 149' in done.text
+    assert copy_state(db, grande['user_id'], grande['pid']) == ('v1', None, 150)
+
+
+def test_cut_read_starts_over_if_the_playlist_changed(grande, db, spotify):
+    big_playlist(spotify, grande['pid'], 150, fail={100: httpx.ReadTimeout('tope')})
+    grande['client'].get(grande['refresh'])
+    grande['library'](snapshot='v2', total=120)
+
+    offsets = big_playlist(spotify, grande['pid'], 120, first=500)
+    done = grande['client'].get(grande['refresh'])
+
+    assert sorted(offsets) == [0, 50, 100]
+    assert 'Al dia' in done.text
+    # lo leido de la version vieja que ya no esta se va al terminar
+    assert 'Artista 000' not in done.text
+    assert copy_state(db, grande['user_id'], grande['pid']) == ('v2', None, 120)
+
+
+def test_cut_reread_shows_nuevos_and_drops_nothing_until_it_ends(grande, db, spotify):
+    big_playlist(spotify, grande['pid'], 150)
+    grande['client'].get(grande['refresh'])
+    grande['library'](snapshot='v2', total=150)
+    big_playlist(spotify, grande['pid'], 150, first=100, fail={100: httpx.ReadTimeout('tope')})
+
+    cut = grande['client'].get(grande['refresh'])
+
+    assert 'Leida en parte' in cut.text
+    assert '50 artistas nuevos' in cut.text
+    assert re.search(r'id="art-[^"]+" hx-swap-oob="delete"', cut.text) is None
+    assert copy_state(db, grande['user_id'], grande['pid']) == ('v1', 100, 200)
+
+    offsets = big_playlist(spotify, grande['pid'], 150, first=100)
+    done = grande['client'].get(grande['refresh'])
+
+    assert offsets == [100]
+    assert '50 artistas nuevos' in done.text
+    assert f'id="art-{grande["pid"]}-a0" hx-swap-oob="delete"' in done.text
+    assert copy_state(db, grande['user_id'], grande['pid']) == ('v2', None, 150)
+
+
+def test_rate_limit_in_a_parallel_read_saves_nothing(grande, db, spotify):
+    limited = httpx.Response(429, headers={'Retry-After': '30'}, json={'error': {'status': 429}})
+    big_playlist(spotify, grande['pid'], 150, fail={50: limited})
+    spotify_api.clear_cooldowns()
+
+    try:
+        refreshed = grande['client'].get(grande['refresh'])
+    finally:
+        spotify_api.clear_cooldowns()
+
+    assert 'Sin actualizar' in refreshed.text
+    assert 'No pudimos leer esta playlist' in refreshed.text
+    assert copy_state(db, grande['user_id'], grande['pid']) == (None, None, 0)
+
+
+def test_opening_playlists_in_a_row_reads_the_library_once(grande, spotify):
+    route = grande['library']()
+    route.reset()
+    big_playlist(spotify, grande['pid'], 150)
+
+    grande['client'].get(grande['refresh'])
+    grande['client'].get(grande['open'])
+    grande['client'].get(grande['refresh'])
+
+    assert route.call_count == 1

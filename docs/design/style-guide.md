@@ -11,12 +11,18 @@ cambio alcanza con "en la Fila de playlist, ...". Si un nombre choca con el glos
 
 Estado: base definida (#10). Layout base elegido en #7 (ronda 4, dashboard fijo); pulido visual pendiente.
 
-Interacciones de Vista Canal: la Flecha de artista mueve sin llamar a Spotify y actualiza las dos columnas y el contador de la Barra lateral.
+Interacciones de Vista Canal: la Flecha de artista (y un Resultado del Buscador) mueve la fila en el acto, sin esperar al servidor, y actualiza
+las dos columnas y el contador de la Barra lateral. Al sacar, la fila vuelve a la playlist abierta al instante si salio de ahi; si no,
+aparece cuando responde el servidor. Varios clicks seguidos se mandan en orden. Si el servidor rechaza o falla, la fila vuelve a su
+lugar y aparece un Aviso de accion ("No pudimos guardar el cambio. Proba de nuevo." si no trae uno propio).
 Una sola Fila de playlist abierta a la vez: abrir otra pliega la anterior. La fila muestra su copia guardada al instante y la actualiza por detras.
 La lista nunca se reordena mientras se lee: lo que llega durante la lectura va al Bloque de nuevos, al fondo.
 Con Seed Playlists prendidas, la Columna izquierda queda apagada y no responde.
 Un cambio hecho directamente en Spotify puede tardar uno o dos minutos en verse (ADR 0008).
 Durante un envio se deshabilita su boton; los errores de conexion o limites de Spotify aparecen como Aviso de accion sin borrar la vista.
+Navegar entre vistas (Barra lateral, Boton Ajustes, Nuevo Canal) cambia solo el Panel y la Barra lateral; la pagina entera llega solo al entrar por URL o recargar.
+Apoyar el mouse sobre una Fila de Canal o el Boton Inicio precarga su vista: el click la muestra sin esperar al servidor.
+Los tokens y el CSS de todas las vistas viven en `src/app/static/app.css` (un solo archivo, cacheado con version en la URL).
 
 ## Principios
 
@@ -61,9 +67,12 @@ degradado con la inicial grande en negro translucido. El tono del Canal tine su 
 Si Spotify tiene portada de la playlist (la del Canal es la de su Target), va encima del
 degradado; el degradado queda de fondo si no hay o no carga.
 
-**Avatares**: circulo con el tono del nombre y la inicial; encima va siempre una foto: la de
-Spotify en el Buscador de artistas, la de Deezer si el Run ya vinculo al artista, y si no la
-busca `/artistas/foto` en Deezer por ISRC o nombre. La inicial queda si no hay foto o no carga.
+**Avatares**: circulo con el tono del nombre y la inicial; encima va la foto: la de Spotify en
+el Buscador de artistas, y si no la de Deezer guardada por artista, directo del CDN. Las fotos
+son lo ultimo que aparece: un avatar sin foto guardada sale con la inicial y `data-foto`, y
+`static/fotos.js` las pide de a tandas recien cuando la pagina esta quieta (refresco de la
+playlist respondido), sin entrar en la cola de las Flechas. Un artista que Deezer no tiene se
+recuerda un dia. La inicial queda si no hay foto o no carga.
 El avatar del Perfil lleva la foto de perfil de Spotify del User.
 
 **Rueda**: los paneles con scroll corren 70% de lo que pide la rueda y frenan rapido, con
@@ -153,11 +162,12 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Fila de playlist | Portada, nombre, cantidad de canciones y Boton ver artistas |
 | Fila no disponible | Fila gris al fondo de la lista, dice "No disponible" y no se despliega: playlists ajenas no colaborativas y la Target de este Canal |
 | Boton ver artistas | Flecha que despliega la fila; una sola abierta a la vez |
-| Indicador de lectura | Arriba de la Columna izquierda, fijo, mientras hay una fila abierta: "Buscando...", "Al dia" o "Sin actualizar" |
+| Indicador de lectura | Arriba de la Columna izquierda, fijo, mientras hay una fila abierta: "Buscando...", "Al dia", "Sin actualizar" o "Leida en parte" (Spotify no llego a mandar toda la playlist a tiempo: se ven los artistas leidos hasta ahi y la proxima apertura sigue desde ahi) |
 | Artistas de la playlist | Filas de artista en orden alfabetico, invitados incluidos, sin los que ya estan en la Columna derecha. Si no queda ninguno: "Ya estan todos". Si nunca se pudo leer: "No pudimos leer esta playlist. Proba mas tarde." |
 | Bloque de nuevos | Al fondo de la fila abierta, apartado: "2 artistas nuevos" y sus Filas de artista en orden alfabetico. Dura hasta plegar la playlist; al volver a abrirla se mezclan con el resto |
 | Columna derecha | "Quienes entran": la Whitelist del Canal en Filas de artista, en orden alfabetico. Vacia: "Elegi artistas desde una playlist o buscalos." |
-| Buscador de artistas | Arriba de la Columna derecha; suma a la Lista manual. No aparece si el Canal usa Seed Playlists |
+| Buscador de artistas | Arriba de la Columna derecha; suma a la Lista manual. No aparece si el Canal usa Seed Playlists. Busca desde 2 letras, 200 ms despues de dejar de tipear; al vaciarlo se limpian los resultados |
+| Aviso de busqueda | Aviso warn en lugar de los resultados del Buscador si Spotify pidio una pausa o se quedo sin cuota; el resto de la vista sigue igual |
 | Resultado agregado | Resultado del Buscador de un artista que ya esta en el Canal: apagado, sin boton y con la etiqueta "added" |
 | Aviso de Seed | En la Columna derecha si el Canal usa Seed Playlists, en lugar del Buscador: las filas no tienen flecha y el aviso lleva a Ajustes |
 
@@ -165,7 +175,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 
 | Nombre | Que es |
 | --- | --- |
-| Seed Playlists | Las playlists usables del User con un Interruptor de playlist cada una. Con una prendida el Canal usa Seed; con ninguna, su Lista manual |
+| Seed Playlists | Las playlists usables del User con un Interruptor de playlist cada una. Con una prendida el Canal usa Seed; con ninguna, su Lista manual. Se pinta con la biblioteca guardada y se pone al dia sola por detras, sin perder el scroll, solo si aparecio, se fue o cambio una playlist; si Spotify falla queda como estaba |
 | Interruptor de playlist | Prende o apaga la playlist como Seed Playlist de este Canal |
 | Interruptor Feats | Junto a cada Seed Playlist prendida: sumar tambien a sus invitados |
 | Columna de reglas | Columna derecha de la Vista Ajustes: Caja Playlist, Editor de Retencion, Interruptor Guardado y Resumen de Canal |

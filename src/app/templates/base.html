@@ -12,154 +12,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Figtree:wght@400..700&display=swap" rel="stylesheet">
-  <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="{{ static_url('app.css') }}">
+  <!-- defer: htmx y las extensiones no frenan el primer pintado y corren en orden antes de DOMContentLoaded -->
+  <script src="{{ static_url('htmx-2.0.4.min.js') }}" defer></script>
   <!-- morph en vez de reemplazo: los paneles conservan su scroll despues de cada accion -->
-  <script src="https://unpkg.com/idiomorph@0.8.0/dist/idiomorph-ext.min.js" crossorigin="anonymous"></script>
-  <script>
-    document.addEventListener('htmx:configRequest', function (event) {
-      const panel = document.getElementById('canal-panel');
-      // solo en POST: en un GET boosteado quedaria pegado a la URL de la pagina
-      if (!panel || event.detail.verb !== 'post' || !event.detail.path.startsWith('/canales/' + panel.dataset.canalId + '/')) return;
-      const opened = panel.querySelector('[data-playlist][aria-expanded="true"]');
-      event.detail.parameters.open = opened ? opened.dataset.playlist : '';
-    });
-    // una sola Fila de playlist abierta: plegar borra el Bloque de nuevos y al reabrir se mezcla en la lista
-    document.addEventListener('click', function (event) {
-      const link = event.target.closest('[data-artists-url]');
-      if (!link || !window.htmx || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
-      const detail = document.getElementById('detalle-' + link.dataset.playlist);
-      if (!detail) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const opening = link.getAttribute('aria-expanded') !== 'true';
-      document.querySelectorAll('[data-playlist][aria-expanded="true"]').forEach(function (other) {
-        const open = document.getElementById('detalle-' + other.dataset.playlist);
-        other.setAttribute('aria-expanded', 'false');
-        open.hidden = true;
-        open.replaceChildren();
-      });
-      document.getElementById('indicador').replaceChildren();
-      const url = new URL(location.href);
-      if (opening) url.searchParams.set('open', link.dataset.playlist); else url.searchParams.delete('open');
-      history.replaceState(history.state, '', url);
-      if (!opening) return;
-      link.setAttribute('aria-expanded', 'true');
-      detail.hidden = false;
-      detail.innerHTML = '<small role="status">Cargando artistas...</small>';
-      htmx.ajax('GET', link.dataset.artistsUrl, {source: link, target: detail, swap: 'innerHTML'}).finally(function () {
-        if (!detail.querySelector('[data-sorted]')) detail.replaceChildren();
-      }).catch(function () {
-        const notice = document.getElementById('action-notice');
-        if (notice) notice.innerHTML = '<div class="aviso warn">No pudimos cargar los artistas. Proba de nuevo.</div>';
-      });
-    }, true);
-    // los swaps fuera de banda agregan filas al final y sacan del Bloque: aca se reordena y se recuenta, sin llamar al servidor
-    document.addEventListener('htmx:afterRequest', function (event) {
-      // si el refresco mismo fallo (red, app ocupada) nadie toco el Indicador
-      const refreshed = event.detail.pathInfo.requestPath.match(/\/playlists\/([^/]+)\/refrescar/);
-      const reading = refreshed && document.getElementById('ind-' + refreshed[1]);
-      if (reading && reading.textContent === 'Buscando...') reading.textContent = 'Sin actualizar';
-      const loading = refreshed && document.querySelector('#artistas-' + refreshed[1] + ' [role="status"]');
-      if (loading) loading.textContent = 'No pudimos leer esta playlist. Proba mas tarde.';
-      document.querySelectorAll('[data-sorted]').forEach(function (list) {
-        const rows = Array.from(list.children).filter(function (row) { return row.dataset.sort !== undefined; });
-        const sorted = rows.slice().sort(function (a, b) { return a.dataset.sort < b.dataset.sort ? -1 : a.dataset.sort > b.dataset.sort ? 1 : 0; });
-        if (sorted.some(function (row, index) { return row !== rows[index]; })) list.append.apply(list, sorted);
-      });
-      document.querySelectorAll('[data-bloque]').forEach(function (block) {
-        const count = block.querySelectorAll('[data-sort]').length;
-        block.hidden = count === 0;
-        block.querySelector('[data-bloque-count]').textContent = count === 1 ? '1 artista nuevo' : count + ' artistas nuevos';
-      });
-    });
-    // rueda con menos deslizamiento que la del navegador: cada panel corre un poco menos y frena enseguida
-    const WHEEL_STEP = 0.7;
-    const WHEEL_EASE = 0.35;
-    const glides = new WeakMap();
-    function glide(box) {
-      const state = glides.get(box);
-      const left = state.target - box.scrollTop;
-      if (Math.abs(left) < 1) { box.scrollTop = state.target; state.frame = 0; return; }
-      box.scrollTop += left * WHEEL_EASE;
-      state.frame = requestAnimationFrame(function () { glide(box); });
-    }
-    document.addEventListener('wheel', function (event) {
-      const box = event.target.closest('.scroll');
-      if (!box || event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY) || box.scrollHeight <= box.clientHeight) return;
-      event.preventDefault();
-      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? box.clientHeight : 1;
-      const state = glides.get(box) || { target: 0, frame: 0 };
-      // sin animacion en curso se parte de donde esta: la barra o un swap pudieron moverlo
-      const from = state.frame ? state.target : box.scrollTop;
-      state.target = Math.max(0, Math.min(box.scrollHeight - box.clientHeight, from + event.deltaY * unit * WHEEL_STEP));
-      glides.set(box, state);
-      if (!state.frame) state.frame = requestAnimationFrame(function () { glide(box); });
-    }, { passive: false });
-    document.addEventListener('htmx:sendError', function () {
-      const notice = document.getElementById('action-notice');
-      if (notice) notice.innerHTML = '<div class="aviso warn">No pudimos conectar. Proba de nuevo.</div>';
-    });
-  </script>
+  <script src="{{ static_url('idiomorph-ext-0.8.0.min.js') }}" defer></script>
+  <script src="{{ static_url('htmx-ext-preload-2.1.0.js') }}" defer></script>
+  <script src="{{ static_url('app.js') }}" defer></script>
+  <script src="{{ static_url('navegacion.js') }}" defer></script>
+  <!-- scripts propios extra: una linea por archivo aca abajo, con static_url('archivo.js') y defer; corren despues de app.js en este orden -->
+  <script src="{{ static_url('fotos.js') }}" defer></script>
+  <script src="{{ static_url('flechas.js') }}" defer></script>
+  <!-- fin de scripts propios extra -->
   <style>
-    /* tokens de docs/design/style-guide.md */
-    :root {
-      color-scheme: dark;
-      --negro: #000000;
-      --superficie: #141414;
-      --elevada: #1E1E1E;
-      --elevada-2: #2A2A2A;
-      --linea: #262626;
-      --texto: #F5F5F2;
-      --texto-2: #A7A9A4;
-      --texto-3: #6E716B;
-      --verde: #1ED760;
-      --verde-hondo: #13A049;
-      --verde-suave: rgba(30, 215, 96, 0.13);
-      --ambar: #F5B642;
-      --ambar-suave: rgba(245, 182, 66, 0.14);
-      --rojo: #FF6B6B;
-      --rojo-suave: rgba(255, 107, 107, 0.14);
-      --scroll: #333333;
-      --scroll-hover: #4A4A4A;
-      --display: 'Archivo', 'Arial Narrow', system-ui, sans-serif;
-      --body: 'Figtree', 'Segoe UI', system-ui, sans-serif;
-      --r-s: 6px; --r-m: 10px; --r-l: 14px;
-    }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body { margin: 0; background: var(--negro); color: var(--texto); font: 14px/1.45 var(--body); padding: 8px 16px; }
-    h1, h2, h3 { font-family: var(--display); margin: 0; line-height: 1.05; text-wrap: balance; }
-    p { margin: 0; }
-    button, input { font: inherit; color: inherit; }
-    button { cursor: pointer; }
-    a { color: inherit; }
-    :focus-visible { outline: 2px solid var(--verde); outline-offset: 2px; }
-    small { font-size: 12.5px; color: var(--texto-2); }
-    .muted { color: var(--texto-2); }
-    .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--texto-2); }
-    .grow { flex: 1; min-width: 0; }
-
-    .btn { display: inline-block; border: 1px solid var(--texto-3); background: none; color: var(--texto); padding: 7px 14px; border-radius: 99px; font-weight: 700; font-size: 13px; white-space: nowrap; text-decoration: none; }
-    .btn:hover { border-color: var(--texto); }
-    .btn.primario { background: var(--verde); border-color: var(--verde); color: var(--negro); }
-    .btn.primario:hover { background: #3BE477; }
-    .btn.fantasma { border-color: transparent; color: var(--texto-2); padding-inline: 8px; }
-    .btn.fantasma:hover { color: var(--texto); }
-    .btn.chico { padding: 4px 10px; font-size: 12px; }
-    .btn.grande { padding: 14px 30px; font-size: 16px; }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .aviso { border-radius: var(--r-m); padding: 10px 12px; font-size: 13px; background: var(--elevada); color: var(--texto-2); }
-    .aviso b { color: var(--texto); }
-    .aviso.warn { background: var(--ambar-suave); color: #F8D59A; }
-    .aviso.crit { background: var(--rojo-suave); color: #FFB3B3; }
-    .aviso.ok { background: var(--verde-suave); color: #9EF0BC; }
-
-    .marca { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 800; font-stretch: 80%; font-size: 19px; }
-    .marca i { width: 24px; height: 24px; border-radius: 50%; background: var(--verde); display: grid; place-items: center; }
-    .marca i::after { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--negro); }
-    .frase { font-family: var(--display); font-weight: 800; font-stretch: 78%; font-size: clamp(38px, 7.2vw, 88px); line-height: .98; letter-spacing: -0.025em; }
-    .frase em { font-style: normal; color: var(--verde); }
-    .frase .tok { color: var(--verde); border-bottom: 4px dotted var(--verde); }
     {% block style %}{% endblock %}
   </style>
 </head>

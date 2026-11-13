@@ -1,5 +1,7 @@
 {% import '_macros.html' as ui %}
-{% if query and results %}
+{% if notice %}
+<div class="aviso warn" data-n="Aviso de busqueda" role="status">{{ notice }}</div>
+{% elif query and results %}
 <div class="results">
   {% for artist in results %}{{ ui.search_result(canal.id, artist) }}{% endfor %}
 </div>

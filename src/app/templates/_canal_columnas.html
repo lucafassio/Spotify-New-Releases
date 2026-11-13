@@ -30,7 +30,7 @@
         {% else %}
         <div class="stack" style="gap:6px">
           <input type="search" name="q" placeholder="Buscar un artista para sumar" autocomplete="off" data-n="Buscador de artistas"
-            hx-get="/canales/{{ canal.id }}/buscar" hx-trigger="input changed delay:300ms, search" hx-sync="this:replace" hx-target="#res" hx-swap="innerHTML">
+            hx-get="/canales/{{ canal.id }}/buscar" hx-trigger="input[this.value.trim().length != 1] changed delay:200ms, search[this.value.trim().length != 1]" hx-sync="this:replace" hx-target="#res" hx-swap="innerHTML">
           <div id="res"></div>
         </div>
         {% endif %}

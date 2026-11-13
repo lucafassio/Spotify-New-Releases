@@ -65,6 +65,66 @@ def test_name_search_without_exact_match_is_none(spotify):
     assert deezer.find_artist_by_name('Emilia') is None
 
 
+# Fotos desde la web (#23)
+
+PICTURE = 'https://cdn-images.dzcdn.net/images/artist/abc/56x56-000000-80-0-0.jpg'
+
+
+def test_web_reuses_one_client_and_never_sleeps(spotify, monkeypatch):
+    monkeypatch.setattr(deezer.time, 'sleep', lambda seconds: pytest.fail('la web no duerme esperando a Deezer'))
+    route = spotify.get(f'{API_URL}/artist/27').mock(return_value=deezer_error(4, 'Quota limit exceeded'))
+
+    with pytest.raises(deezer.DeezerBusy):
+        deezer.find_picture_url('Duki', deezer_id=27)
+
+    assert route.call_count == 1
+    assert deezer.get_web_client() is deezer.get_web_client()
+
+
+def test_linked_artist_picture_comes_from_its_id(spotify):
+    spotify.get(f'{API_URL}/artist/27').respond(json={'id': 27, 'name': 'Duki', 'picture_small': PICTURE})
+
+    assert deezer.find_picture_url('Duki', deezer_id=27) == PICTURE
+
+
+def test_unlinked_artist_falls_back_from_isrc_to_name(spotify):
+    spotify.get(f'{API_URL}/track/isrc:AR9').respond(json={'artist': {'id': 1, 'name': 'Otro'}, 'contributors': [{'id': 1, 'name': 'Otro'}]})
+    spotify.get(f'{API_URL}/search/artist').respond(json={'data': [{'id': 2, 'name': 'Duki', 'nb_fan': 9, 'picture_small': PICTURE}]})
+
+    assert deezer.find_picture_url('Duki', 'AR9') == PICTURE
+
+
+def test_empty_picture_is_none(spotify):
+    empty = 'https://cdn-images.dzcdn.net/images/artist//56x56-000000-80-0-0.jpg'
+    spotify.get(f'{API_URL}/search/artist').respond(json={'data': [{'id': 2, 'name': 'Duki', 'picture_small': empty}]})
+
+    assert deezer.find_picture_url('Duki') is None
+
+
+def test_quota_stops_the_rest_of_the_batch(spotify, monkeypatch):
+    monkeypatch.setattr(deezer, 'PHOTO_WORKERS', 1)
+    spotify.get(f'{API_URL}/artist/1').respond(json={'id': 1, 'picture_small': PICTURE})
+    spotify.get(f'{API_URL}/artist/2').mock(return_value=deezer_error(4, 'Quota limit exceeded'))
+    after = spotify.get(f'{API_URL}/artist/3').respond(json={'id': 3, 'picture_small': PICTURE})
+    batch = [{'artist_id': f'a{n}', 'name': 'x', 'deezer_artist_id': n} for n in (1, 2, 3)]
+
+    # lo que se encontro antes del corte vuelve; lo que falta lo pide el navegador mas tarde
+    assert deezer.find_pictures(batch) == {'a1': PICTURE}
+    assert after.call_count == 0
+
+
+def test_network_error_stops_the_batch_and_odd_answers_skip_one(spotify, monkeypatch):
+    monkeypatch.setattr(deezer, 'PHOTO_WORKERS', 1)
+    spotify.get(f'{API_URL}/artist/1').mock(return_value=deezer_error(300, 'raro'))
+    spotify.get(f'{API_URL}/artist/2').respond(json={'id': 2, 'picture_small': PICTURE})
+    spotify.get(f'{API_URL}/artist/3').mock(side_effect=httpx.ConnectTimeout('lento'))
+    after = spotify.get(f'{API_URL}/artist/4').respond(json={'id': 4, 'picture_small': PICTURE})
+    batch = [{'artist_id': f'a{n}', 'name': 'x', 'deezer_artist_id': n} for n in (1, 2, 3, 4)]
+
+    assert deezer.find_pictures(batch) == {'a2': PICTURE}
+    assert after.call_count == 0
+
+
 def deezer_error(code, message):
     '''
     Respuesta de error de Deezer, que viene con status 200.

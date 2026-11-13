@@ -2,8 +2,9 @@ import atexit
 import hashlib
 import time
 from collections import OrderedDict
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 from threading import Lock
 from urllib.parse import urlencode
 
@@ -45,6 +46,18 @@ class QuotaExceeded(Exception):
 
 class RateLimited(Exception):
     pass
+
+
+class PartialRead(httpx.TimeoutException):
+
+    def __init__(self, entries):
+        '''
+        El tope de una accion web corto la lectura de una playlist; quien no la espera la ve como cualquier timeout.
+            Args:
+                entries (list): items de las paginas completas leidas, seguidas desde el offset pedido
+        '''
+        super().__init__('Spotify tardo demasiado. Proba de nuevo.')
+        self.entries = entries
 
 
 request_deadline = ContextVar('spotify_request_deadline', default=None)
@@ -135,6 +148,10 @@ RATE_LIMIT_MAX_WAIT = 30
 # topes por request de GET /me/library/contains y de POST/DELETE /playlists/{id}/items
 LIBRARY_CHUNK = 40
 ITEMS_CHUNK = 100
+
+# items por pagina de GET /playlists/{id}/items y paginas en vuelo a la vez en la web (#24)
+PAGE_SIZE = 50
+PAGE_WORKERS = 4
 
 # requests a la Web API hechos por este proceso, reintentos incluidos; el Tick loguea cuanto gasto cada Run (#17)
 api_calls = 0
@@ -359,18 +376,95 @@ def get_my_playlists(access_token):
     return playlists
 
 
-def get_playlist_entries(access_token, playlist_id, offset=0):
+def get_playlist_entries(access_token, playlist_id, offset=0, total=None):
     '''
-    Lee los items de una playlist propia o colaborativa, desde el principio o desde un offset.
+    Lee los items de una playlist propia o colaborativa, desde el principio o desde un offset; en la web, con el total conocido, pide las paginas en paralelo.
         Args:
             access_token (str): access token vigente
             playlist_id (str): id de Spotify de la playlist
             offset (int): posicion del primer item a leer
+            total (int): canciones de la playlist segun GET /me/playlists, o None si no se sabe
         Returns:
             entries (list): items de GET /playlists/{id}/items
     '''
-    params = {'limit': 50, 'offset': offset} if offset else {'limit': 50}
-    entries = get_pages(access_token, f'/playlists/{playlist_id}/items', params)
+    path = f'/playlists/{playlist_id}/items'
+
+    # el Run no tiene tope de tiempo: sigue leyendo en fila, con sus reintentos
+    if total is None or request_deadline.get() is None:
+        params = {'limit': PAGE_SIZE, 'offset': offset} if offset else {'limit': PAGE_SIZE}
+        entries = get_pages(access_token, path, params)
+        return entries
+
+    entries = get_pages_by_offset(access_token, path, offset, total)
+    return entries
+
+
+def get_page(access_token, path, offset):
+    '''
+    Pide una pagina de items por su offset.
+        Args:
+            access_token (str): access token vigente
+            path (str): path de la paginacion
+            offset (int): posicion del primer item de la pagina
+        Returns:
+            page (dict): pagina de Spotify con items y next
+    '''
+    params = {'limit': PAGE_SIZE, 'offset': offset} if offset else {'limit': PAGE_SIZE}
+    page = call_api('GET', access_token, path, params=params).json()
+    return page
+
+
+def get_pages_by_offset(access_token, path, offset, total):
+    '''
+    Pide las paginas de a PAGE_WORKERS a la vez; si el tope corta, conserva las completas seguidas desde el principio.
+        Args:
+            access_token (str): access token vigente
+            path (str): path de la paginacion
+            offset (int): posicion del primer item a leer
+            total (int): canciones que se espera que tenga la playlist
+        Returns:
+            entries (list): items de todas las paginas, en orden
+    '''
+    offsets = range(offset, max(total, offset + 1), PAGE_SIZE)
+    pool = ThreadPoolExecutor(max_workers=PAGE_WORKERS)
+
+    try:
+        # request_deadline es un ContextVar: cada pagina corre con una copia del contexto del request
+        futures = [pool.submit(copy_context().run, get_page, access_token, path, page_offset) for page_offset in offsets]
+        wait(futures, return_when=FIRST_EXCEPTION)
+    finally:
+        # ante el primer error las que no salieron no salen; las que estan en vuelo terminan solas por el tope o el cooldown
+        pool.shutdown(wait=True, cancel_futures=True)
+
+    entries = []
+    for future in futures:
+        if future.cancelled() or future.exception() is not None:
+            break
+        page = future.result()
+        entries.extend(page['items'])
+
+    errors = [future.exception() for future in futures if not future.cancelled() and future.exception() is not None]
+
+    # un 429 corta todo y manda sobre el resto de los errores, como en la lectura en fila
+    for error in errors:
+        if isinstance(error, (RateLimited, QuotaExceeded)):
+            raise error
+    for error in errors:
+        if not isinstance(error, httpx.TimeoutException):
+            raise error
+    if errors or any(future.cancelled() for future in futures):
+        raise PartialRead(entries)
+
+    # la playlist pudo crecer despues de leer la biblioteca: lo que sobra sigue por next
+    url = page.get('next')
+    while url:
+        try:
+            page = call_api('GET', access_token, url).json()
+        except httpx.TimeoutException:
+            raise PartialRead(entries) from None
+        entries.extend(page['items'])
+        url = page.get('next')
+
     return entries
 
 

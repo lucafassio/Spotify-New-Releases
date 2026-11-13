@@ -1,3 +1,4 @@
+import hashlib
 import os
 import secrets
 import time
@@ -7,11 +8,17 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode
 
 import httpx
-from fastapi import BackgroundTasks, Depends, FastAPI, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi import BackgroundTasks, Depends, FastAPI, Request, Response
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from psycopg.errors import LockNotAvailable, QueryCanceled
+from psycopg.rows import dict_row
 from psycopg_pool import PoolTimeout, TooManyRequests
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -55,25 +62,33 @@ templates.env.filters['initial'] = initial
 templates.env.filters['artist_key'] = copias.artist_sort_key
 def artist_photo(artist):
     '''
-    Foto para el avatar de un artista: la de Spotify si vino, la de Deezer si el Run lo vinculo, si no la busca /artistas/foto.
+    Foto para el avatar de un artista: la de Spotify si vino, si no la de Deezer guardada (#23). Nunca una url de este servidor.
         Args:
-            artist (dict): fila con name y opcionales image, deezer_artist_id e isrc
+            artist (dict): fila con opcionales image y photo_url
         Returns:
-            url (str): url de la foto, o None sin nombre para buscarlo
+            url (str): url de la foto, o None si todavia no la tenemos
     '''
-    if artist.get('image'):
-        return artist['image']
-    if artist.get('deezer_artist_id'):
-        return deezer.get_picture_url(artist['deezer_artist_id'])
-    if not artist.get('name'):
-        return None
-
-    params = {'name': artist['name'], 'isrc': artist['isrc']} if artist.get('isrc') else {'name': artist['name']}
-    url = f'/artistas/foto?{urlencode(params)}'
+    url = artist.get('image') or artist.get('photo_url') or None
     return url
 
 
+def photo_lookup(artist):
+    '''
+    Id que static/fotos.js usa para pedir la foto de un avatar recien cuando la pagina esta quieta.
+        Args:
+            artist (dict): fila con name, artist_id (id en el Buscador) y opcionales image, photo_url y photo_known
+        Returns:
+            artist_id (str): id de Spotify del artista, o None si ya tiene foto o hace menos de un dia que no tiene
+    '''
+    if artist_photo(artist) or artist.get('photo_known') or not artist.get('name'):
+        return None
+
+    artist_id = artist.get('artist_id') or artist.get('id')
+    return artist_id
+
+
 templates.env.filters['artist_photo'] = artist_photo
+templates.env.filters['photo_lookup'] = photo_lookup
 
 
 @asynccontextmanager
@@ -86,21 +101,87 @@ async def lifespan(app):
         spotify.close_http_client()
         spotify.clear_cooldowns()
         library_cache.clear()
+        search_cache.clear()
         token_cache.clear()
+
+
+STATIC_DIR = Path(__file__).parent / 'static'
+
+
+def get_static_version(name):
+    '''
+    Version de un archivo de /static a partir de su contenido; se calcula una vez y queda guardada.
+        Args:
+            name (str): path relativo a static con barras normales, por ejemplo 'app.js'
+        Returns:
+            version (str): primeros 10 caracteres del sha256, o None si el archivo no existe
+    '''
+    if name not in STATIC_VERSIONS:
+        path = STATIC_DIR / name
+        STATIC_VERSIONS[name] = hashlib.sha256(path.read_bytes()).hexdigest()[:10] if path.is_file() else None
+    return STATIC_VERSIONS[name]
+
+
+# todo archivo de /static (subcarpetas incluidas) al arrancar; uno que aparezca despues se calcula al pedirlo
+STATIC_VERSIONS = {}
+for static_path in STATIC_DIR.rglob('*'):
+    if static_path.is_file():
+        get_static_version(static_path.relative_to(STATIC_DIR).as_posix())
+
+
+def static_url(name):
+    '''
+    URL de cualquier archivo de /static con su version: cambia cuando cambia el contenido y el navegador baja el nuevo.
+        Args:
+            name (str): path relativo a static, por ejemplo 'app.js' o 'flechas.js'
+        Returns:
+            url (str): path con ?v=version, o sin version si el archivo no existe
+    '''
+    version = get_static_version(name)
+    url = f'/static/{name}?v={version}' if version else f'/static/{name}'
+    return url
+
+
+templates.env.globals['static_url'] = static_url
+
+
+class VersionedStaticFiles(StaticFiles):
+    '''Sirve /static con cache de un anio solo si la URL trae la version vigente del archivo.'''
+
+    async def get_response(self, path, scope):
+        '''
+        Agrega Cache-Control inmutable a las URLs versionadas; las demas quedan con la revalidacion de siempre.
+            Args:
+                path (str): archivo pedido, relativo a static
+                scope (dict): scope ASGI del request
+            Returns:
+                response (Response): archivo o error de StaticFiles
+        '''
+        response = await super().get_response(path, scope)
+        version = parse_qs(scope.get('query_string', b'').decode()).get('v', [''])[0]
+
+        # una version vieja recibe el archivo nuevo: no se cachea para no fijarlo bajo una URL equivocada
+        # en Windows StaticFiles arma el path con barras invertidas
+        if response.status_code == 200 and version and version == get_static_version(path.replace('\\', '/')):
+            response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+
+        return response
 
 
 # cookie firmada, no cifrada: guardamos solo el id del User y datos de pantalla, nunca tokens
 app = FastAPI(lifespan=lifespan)
-# manifest e iconos: la web se instala como app desde Chrome, Edge o el celular
-app.mount('/static', StaticFiles(directory=Path(__file__).parent / 'static'), name='static')
+# manifest e iconos para instalar la web como app; CSS, JS, htmx y sus extensiones con version en la URL
+app.mount('/static', VersionedStaticFiles(directory=STATIC_DIR), name='static')
 SESSION_AGE = 60 * 60 * 24 * 30
+SESSION_RENEW_AGE = 60 * 60
 
 
 # va antes de SessionMiddleware para quedar adentro y ver request.session
 @app.middleware('http')
 async def renew_session(request: Request, call_next):
-    '''Renueva la cookie en cada visita: la sesion vence solo tras 30 dias sin entrar.'''
-    if request.session.get('user_id'):
+    '''Renueva la cookie como mucho una vez por hora: la sesion vence solo tras 30 dias sin entrar.'''
+    # una cookie distinta en cada respuesta rompe el Vary: Cookie y la vista precargada nunca se reusa
+    if request.session.get('user_id') and time.time() - request.session.get('seen', 0) > SESSION_RENEW_AGE:
         request.session['seen'] = int(time.time())
     return await call_next(request)
 
@@ -125,6 +206,13 @@ LOGIN_ERRORS = {
 TOKEN_TTL = 50 * 60
 token_cache = {}
 library_cache = WebCache()
+# el Buscador repite textos al borrar y reescribir: 10 minutos sin volver a Spotify
+SEARCH_TTL = 10 * 60
+SEARCH_MIN_CHARS = 2
+search_cache = WebCache(limit=256)
+
+# GET /me/playlists tarda 30 a 60 s en reflejar una edicion (ADR 0008): abrir varias playlists seguidas la pide una vez (#24)
+LIBRARY_TTL = 5 * 60
 
 
 @app.middleware('http')
@@ -218,19 +306,26 @@ def get_token(conn, user):
 
 def get_library(conn, user):
     '''
-    Reutiliza la biblioteca del User durante un minuto entre acciones.
+    Reutiliza la biblioteca del User durante cinco minutos entre acciones; cada vez que la trae de Spotify deja al dia las copias y los nombres de las Targets.
         Args:
             conn (psycopg.Connection): conexion del request
             user (dict): User de la sesion
         Returns:
             playlists (list): playlists del User
     '''
-    return library_cache.get((user['id'], 'library'), lambda: spotify.get_my_playlists(get_token(conn, user)))
+    def load():
+        playlists = spotify.get_my_playlists(get_token(conn, user))
+        copias.save_library(conn, user['id'], playlists)
+        canales.sync_target_names(conn, user['id'], playlists)
+        conn.commit()
+        return playlists
+
+    return library_cache.get((user['id'], 'library'), load, ttl=LIBRARY_TTL)
 
 
 def sync_library(conn, user):
     '''
-    Revisa la biblioteca en Spotify, con el minuto de cache, y deja al dia las copias y los nombres de las Targets.
+    Revisa la biblioteca en Spotify, con los cinco minutos de cache; las copias ya quedaron guardadas cuando se trajo, asi un acierto no toca la base.
         Args:
             conn (psycopg.Connection): conexion del request
             user (dict): User de la sesion
@@ -238,9 +333,6 @@ def sync_library(conn, user):
             playlists (list): playlists del User
     '''
     playlists = get_library(conn, user)
-    copias.save_library(conn, user['id'], playlists)
-    canales.sync_target_names(conn, user['id'], playlists)
-    conn.commit()
     return playlists
 
 
@@ -310,8 +402,22 @@ def action_failed(request, message, retry=None):
 @app.exception_handler(spotify.QuotaExceeded)
 def spotify_limited(request, error):
     '''Traduce los limites de Spotify a un Aviso sin bloquear la accion.'''
+    message, retry = limit_notice(error)
+    return action_failed(request, message, retry)
+
+
+def limit_notice(error):
+    '''
+    Texto del Aviso y segundos de espera de un limite de Spotify.
+        Args:
+            error (Exception): RateLimited o QuotaExceeded
+        Returns:
+            message (str): aviso para el User
+            retry (int): segundos hasta que puede reintentar
+    '''
     message = 'Spotify alcanzo su cuota de consultas. Proba de nuevo mas tarde.' if isinstance(error, spotify.QuotaExceeded) else 'Spotify pidio una pausa. Espera un momento antes de volver a intentar.'
-    return action_failed(request, message, int(error.args[0]) if error.args else 1)
+    retry = int(error.args[0]) if error.args and error.args[0] is not None else 1
+    return message, retry
 
 
 @app.exception_handler(PoolTimeout)
@@ -412,6 +518,35 @@ def shell_context(request, conn, user, **extra):
     return context
 
 
+# segundos que el navegador guarda una vista precargada; navegacion.js usa el mismo numero
+PRELOAD_AGE = 10
+
+
+def render_view(request, name, context):
+    '''
+    Arma una vista del dashboard: la pagina entera al entrar por URL, o solo el Panel y la Barra lateral en un click boosteado (va a #vista).
+        Args:
+            request (Request): request entrante
+            name (str): template de la vista, extiende shell.html
+            context (dict): contexto armado con shell_context
+        Returns:
+            response (TemplateResponse): pagina o fragmento
+    '''
+    # el back sin snapshot de htmx pide la pagina para reemplazar todo el body
+    partial = request.headers.get('HX-Boosted') == 'true' and request.headers.get('HX-History-Restore-Request') != 'true'
+    response = templates.TemplateResponse(request, name, dict(context, vista_parcial=partial))
+    # la misma URL devuelve pagina o fragmento: la cache del navegador tiene que separarlas
+    response.headers.add_vary_header('HX-Boosted')
+    response.headers.add_vary_header('HX-History-Restore-Request')
+
+    if partial:
+        # solo la precarga se guarda, y la usa el click que la sigue
+        preloaded = request.headers.get('HX-Preloaded') == 'true'
+        response.headers['Cache-Control'] = f'private, max-age={PRELOAD_AGE}' if preloaded else 'no-store'
+
+    return response
+
+
 @app.get('/')
 def home(request: Request, conn=Depends(get_conn)):
     '''
@@ -428,12 +563,15 @@ def home(request: Request, conn=Depends(get_conn)):
     # un User borrado a mano por Luca deja sesiones colgadas
     if user is None:
         request.session.pop('user_id', None)
+        # un click boosteado swapea en #vista: la Pantalla de login tiene que cargarse entera
+        if request.headers.get('HX-Boosted') == 'true':
+            return HTMLResponse('', headers={'HX-Redirect': '/'})
         error = LOGIN_ERRORS.get(request.query_params.get('error'))
         response = templates.TemplateResponse(request, 'login.html', {'error': error})
         return response
 
     context = shell_context(request, conn, user, view='inicio')
-    response = templates.TemplateResponse(request, 'dashboard.html', context)
+    response = render_view(request, 'dashboard.html', context)
     return response
 
 
@@ -668,6 +806,7 @@ def callback(request: Request, conn=Depends(get_conn)):
     # el access token cacheado puede ser del client anterior si cambio de modo
     token_cache.pop(login['user_id'], None)
     library_cache.clear(login['user_id'])
+    search_cache.clear(login['user_id'])
     request.session['user_id'] = login['user_id']
     request.session['display_name'] = profile.get('display_name') or profile['id']
     request.session['avatar'] = spotify.get_image_url(profile.get('images'), PROFILE_SIZE) or ''
@@ -696,6 +835,7 @@ def logout(request: Request):
     user_id = request.session.get('user_id')
     if user_id is not None:
         library_cache.clear(user_id)
+        search_cache.clear(user_id)
         token_cache.pop(user_id, None)
     request.session.clear()
     response = RedirectResponse('/', status_code=303)
@@ -774,7 +914,7 @@ def new_canal(request: Request, user=Depends(require_user), conn=Depends(get_con
             for p in playlists if p['owner']['id'] == user['spotify_user_id']
         ]
 
-    response = templates.TemplateResponse(request, 'nuevo_canal.html', context)
+    response = render_view(request, 'nuevo_canal.html', context)
     return response
 
 
@@ -790,15 +930,16 @@ def create_canal(request: Request, user=Depends(require_user), form=Depends(read
         Returns:
             response (RedirectResponse): redirect a la vista del Canal nuevo
     '''
-    access_token = get_token(conn, user)
+    own = form.get('tipo') == 'mia'
 
     try:
         # chequeo previo al POST a Spotify para no dejar una playlist huerfana si ya tiene 5 Canales
         if len(canales.list_canales(conn, user['id'])) >= canales.MAX_CANALES:
             raise canales.CanalError(f'Ya tenes {canales.MAX_CANALES} Canales, que es el maximo.')
 
-        if form.get('tipo') == 'mia':
-            playlists = spotify.get_my_playlists(access_token)
+        if own:
+            # la misma biblioteca que acaba de listar la Vista Nuevo Canal, con su minuto de cache
+            playlists = get_library(conn, user)
             playlist = next((p for p in playlists if p['id'] == form.get('playlist_id') and p['owner']['id'] == user['spotify_user_id']), None)
             if playlist is None:
                 raise canales.CanalError('No encontramos esa playlist entre las tuyas.')
@@ -807,15 +948,17 @@ def create_canal(request: Request, user=Depends(require_user), form=Depends(read
             name = form.get('name', '')[:100]
             if not name:
                 raise canales.CanalError('Ponele un nombre a la playlist.')
-            playlist = spotify.create_playlist(access_token, name)
+            playlist = spotify.create_playlist(get_token(conn, user), name)
             canal_id = canales.create_canal(conn, user['id'], playlist['id'], playlist['name'], True)
     except canales.CanalError as error:
         request.session['canal_error'] = str(error)
-        kind = 'mia' if form.get('tipo') == 'mia' else 'nueva'
+        kind = 'mia' if own else 'nueva'
         return RedirectResponse(f'/canales/nuevo?tipo={kind}', status_code=303)
 
     conn.commit()
-    library_cache.clear(user['id'])
+    # solo una playlist recien creada cambia la biblioteca en Spotify
+    if not own:
+        library_cache.clear(user['id'])
     response = RedirectResponse(canal_url(canal_id), status_code=303)
     return response
 
@@ -839,7 +982,7 @@ def show_canal(request: Request, canal_id, user=Depends(require_user), conn=Depe
         open_id=opened['playlist_id'] if opened else None,
         open_artists=visible_artists(conn, user, opened, whitelist) if opened else None,
     )
-    response = templates.TemplateResponse(request, 'canal.html', context)
+    response = render_view(request, 'canal.html', context)
     return response
 
 
@@ -849,20 +992,19 @@ def show_settings(request: Request, canal_id, user=Depends(require_user), conn=D
     return render_settings(request, canal_id, user, conn)
 
 
-def load_copies(conn, user, canal, fresh=False):
+def load_copies(conn, user, canal):
     '''
-    Devuelve la biblioteca guardada; revisa Spotify solo si no hay nada guardado, falta la Target (puede ser recien creada) o se pide.
+    Devuelve la biblioteca guardada; revisa Spotify solo si no hay nada guardado o falta la Target (puede ser recien creada).
         Args:
             conn (psycopg.Connection): conexion del request
             user (dict): User de la sesion
             canal (dict): fila de canales
-            fresh (bool): True revisa igual, con el minuto de cache
         Returns:
             copies (list): filas de playlist_copies
     '''
     copies = copias.list_copies(conn, user['id'])
 
-    if not fresh and any(copy['playlist_id'] == canal['target_playlist_id'] for copy in copies):
+    if any(copy['playlist_id'] == canal['target_playlist_id'] for copy in copies):
         return copies
 
     try:
@@ -903,7 +1045,8 @@ def visible_artists(conn, user, copy, whitelist):
         Returns:
             artists (list): filas en orden alfabetico, o None si la playlist nunca se leyo
     '''
-    if copy['artists_snapshot_id'] is None:
+    # una primera lectura cortada por el tope ya muestra lo leido hasta ahi (#24)
+    if copy['artists_snapshot_id'] is None and copy['partial_total'] is None:
         return None
 
     chosen = {artist['artist_id'] for artist in whitelist}
@@ -952,13 +1095,70 @@ def render_settings(request, canal_id, user, conn, partial=False):
             response (TemplateResponse): html de la vista
     '''
     canal = require_canal(conn, user, canal_id)
-    # un Canal con Seed no tiene filas que abrir: sin esto una playlist nueva recien se podria prender despues del Run
-    copies = load_copies(conn, user, canal, fresh=not partial)
+    # pinta con lo guardado y una playlist nueva la trae refresh_settings por detras; tras un Interruptor alcanzan las copias
+    copies = copias.list_copies(conn, user['id']) if partial else load_copies(conn, user, canal)
+    context = canal_context(request, conn, user, canal, copies, section='ajustes', rows=seed_rows(conn, user, canal, copies))
+    response = templates.TemplateResponse(request, '_canal_response.html', context) if partial else render_view(request, 'canal.html', context)
+    return response
+
+
+def seed_rows(conn, user, canal, copies):
+    '''
+    Arma las filas de la Columna de Seed Playlists: las playlists usables, con su Seed si esta prendida.
+        Args:
+            conn (psycopg.Connection): conexion del request
+            user (dict): User de la sesion
+            canal (dict): fila de canales
+            copies (list): biblioteca guardada
+        Returns:
+            rows (list): copias usables con la clave source
+    '''
     seeds = {source['playlist_id']: source for source in canales.get_sources(conn, canal['id']) if source['type'] == 'seed_playlist'}
     rows = [dict(copy, source=seeds.get(copy['playlist_id'])) for copy in copies if is_usable(copy, user, canal)]
-    context = canal_context(request, conn, user, canal, copies, section='ajustes', rows=rows)
-    response = templates.TemplateResponse(request, '_canal_response.html' if partial else 'canal.html', context)
-    return response
+    return rows
+
+
+def seed_list_view(copies, user, canal):
+    '''
+    Resume lo que la Columna de Seed Playlists muestra de cada playlist, para saber si hay que repintarla.
+        Args:
+            copies (list): biblioteca guardada
+            user (dict): User de la sesion
+            canal (dict): fila de canales
+        Returns:
+            view (list): id, nombre, canciones y portada de cada playlist usable, en orden
+    '''
+    view = [(copy['playlist_id'], copy['name'], copy['total'], copy['image_url']) for copy in copies if is_usable(copy, user, canal)]
+    return view
+
+
+@app.get('/canales/{canal_id}/ajustes/refrescar', response_class=HTMLResponse)
+def refresh_settings(request: Request, canal_id, user=Depends(require_user), conn=Depends(get_conn)):
+    '''
+    Revisa la biblioteca por detras de la Vista Ajustes y devuelve la Columna de Seed Playlists solo si cambio.
+        Args:
+            request (Request): request entrante
+            canal_id (str): id del Canal, tal como viene en el path
+            user (dict): User de la sesion
+            conn (psycopg.Connection): conexion del request
+        Returns:
+            response (Response): columna para el morph, o 204 sin cuerpo si no cambio nada o Spotify fallo
+    '''
+    canal = require_canal(conn, user, canal_id)
+    before = seed_list_view(copias.list_copies(conn, user['id']), user, canal)
+
+    try:
+        sync_library(conn, user)
+    except (*copias.READ_ERRORS, spotify.TokenRejected, TimeoutError):
+        # la vista ya esta pintada con lo guardado: si Spotify falla no se muestra nada
+        return Response(status_code=204)
+
+    copies = copias.list_copies(conn, user['id'])
+    if seed_list_view(copies, user, canal) == before:
+        return Response(status_code=204)
+
+    context = {'canal': canal, 'rows': seed_rows(conn, user, canal, copies)}
+    return templates.TemplateResponse(request, '_canal_seeds.html', context)
 
 
 def finish_settings_change(request, conn, user, canal_id):
@@ -1053,22 +1253,29 @@ def refresh_playlist(request: Request, canal_id, playlist_id, user=Depends(requi
     if copy is None or canales.uses_seed(conn, canal['id']):
         return HTMLResponse('')
 
-    never_read = copy['artists_snapshot_id'] is None
+    never_read = copy['artists_snapshot_id'] is None and copy['partial_total'] is None
     result = refresh_copy(conn, user, playlist_id)
-    conn.commit()
+    context = {'canal': canal, 'open_id': playlist_id, 'status': result['status'], 'never_read': never_read, 'first_read': result['first_read'], 'remaining': [], 'nuevos': [], 'gone': []}
 
-    whitelist = canales.get_whitelist(conn, canal['id'])
-    chosen = {artist['artist_id'] for artist in whitelist}
-    context = {
-        'canal': canal,
-        'open_id': playlist_id,
-        'failed': result['status'] == 'failed',
-        'never_read': never_read,
-        'first_read': result['first_read'],
-        'remaining': visible_artists(conn, user, copias.get_copy(conn, user['id'], playlist_id) or copy, whitelist) or [],
-        'nuevos': copias.add_deezer_ids(conn, [artist for artist in result['added'] if artist['artist_id'] not in chosen]),
-        'gone': [artist_id for artist_id in result['removed'] if artist_id not in chosen],
-    }
+    # al dia o sin leer nada solo cambia el Indicador de lectura: no hace falta la Whitelist ni los artistas
+    if result['status'] in ('same', 'failed'):
+        return templates.TemplateResponse(request, '_playlist_refresh.html', context)
+
+    conn.commit()
+    chosen = {artist['artist_id'] for artist in canales.get_whitelist(conn, canal['id'])}
+    gone = [artist_id for artist_id in result['removed'] if artist_id not in chosen]
+    context['gone'] = gone
+
+    # la lista entera solo se pinta en la primera lectura, o para saber si quedo vacia tras una baja
+    if result['first_read'] or gone:
+        context['remaining'] = [artist for artist in copias.sorted_artists(copias.get_artists(conn, user['id'], playlist_id)) if artist['artist_id'] not in chosen]
+    if not result['first_read']:
+        context['nuevos'] = [artist for artist in result['added'] if artist['artist_id'] not in chosen]
+
+    shown = context['remaining'] if result['first_read'] else context['nuevos']
+    if shown:
+        copias.add_deezer_ids(conn, shown)
+
     return templates.TemplateResponse(request, '_playlist_refresh.html', context)
 
 
@@ -1077,9 +1284,9 @@ SPOTIFY_IMAGES = 'https://i.scdn.co/'
 SEED_MESSAGE = 'Este Canal sigue sus Seed Playlists. Para elegir artistas a mano, apagalas en Ajustes.'
 
 
-def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, from_search=False):
+def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, from_search=False, listed=None):
     '''
-    Responde a una Flecha de artista o al Buscador sin llamar a Spotify: solo cambia la fila, la Columna derecha y el contador, nunca todo el Panel.
+    Responde a una Flecha de artista o al Buscador sin llamar a Spotify: solo la fila movida y los contadores, nunca la Whitelist entera.
         Args:
             request (Request): request entrante
             conn (psycopg.Connection): conexion del request
@@ -1089,6 +1296,7 @@ def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, 
             artist_id (str): id del artista movido
             playlist_id (str): fila de donde salio; si no, la playlist abierta
             from_search (bool): True si vino del Buscador de artistas
+            listed (dict): el artista en la copia de playlist_id, si el que llama ya lo leyo
         Returns:
             response (Response): swaps fuera de banda, o redirect para formularios sin JS
     '''
@@ -1097,11 +1305,10 @@ def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, 
     if request.headers.get('HX-Request') != 'true':
         return RedirectResponse(canal_url(canal['id'], playlist_id), status_code=303)
 
-    whitelist = canales.get_whitelist(conn, canal['id'])
-    copy = find_usable_copy(conn, user, canal, playlist_id) if playlist_id else None
-    in_playlist = copias.get_artists(conn, user['id'], playlist_id) if copy else {}
-    added = next((artist for artist in whitelist if artist['artist_id'] == artist_id), None)
-    chosen = {artist['artist_id'] for artist in whitelist}
+    # sin chequear si la playlist se puede abrir: la copia es del User y una que no se abre no tiene filas que tocar
+    added = canales.get_whitelist_artist(conn, canal['id'], artist_id)
+    if playlist_id and listed is None:
+        listed = copias.get_playlist_artist(conn, user['id'], playlist_id, artist_id)
 
     # la foto que ya mostraba el Buscador; solo de Spotify, el form lo arma el navegador
     search_image = form.get('image', '') if from_search else ''
@@ -1111,14 +1318,12 @@ def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, 
 
     context = {
         'canal': canal,
-        'canales': canales.list_canales(conn, user['id']),
-        'view': canal['id'],
         'artist_id': artist_id,
         'added': added,
-        'whitelist_size': len(whitelist),
-        'open_id': playlist_id if artist_id in in_playlist else None,
-        'back': copias.add_deezer_ids(conn, [{'artist_id': artist_id, **in_playlist[artist_id]}])[0] if artist_id in in_playlist and added is None else None,
-        'left_empty': artist_id in in_playlist and not set(in_playlist) - chosen,
+        'whitelist_size': canales.count_whitelist(conn, canal['id']),
+        'open_id': playlist_id if listed else None,
+        'back': listed if listed and added is None else None,
+        'left_empty': bool(listed and added) and copias.count_unchosen(conn, user['id'], playlist_id, canal['id']) == 0,
         'from_search': from_search,
         'search_image': search_image,
     }
@@ -1144,13 +1349,13 @@ def add_artist(request: Request, canal_id, user=Depends(require_user), form=Depe
     if canales.uses_seed(conn, canal['id']):
         return action_failed(request, SEED_MESSAGE)
 
-    artist = copias.get_artists(conn, user['id'], form['playlist_id']).get(form['artist_id'])
+    artist = copias.get_playlist_artist(conn, user['id'], form['playlist_id'], form['artist_id'])
     if artist is None:
         return action_failed(request, 'Ese artista ya no esta en esa playlist.')
 
     canales.add_manual_artist(conn, canal['id'], form['artist_id'], artist['name'], artist['isrc'])
     conn.commit()
-    return artist_moved(request, conn, user, canal, form, form['artist_id'], playlist_id=form['playlist_id'])
+    return artist_moved(request, conn, user, canal, form, form['artist_id'], playlist_id=form['playlist_id'], listed=artist)
 
 
 @app.post('/canales/{canal_id}/artistas/quitar')
@@ -1190,15 +1395,21 @@ def toggle_seed(request: Request, canal_id, user=Depends(require_user), form=Dep
     playlist_id = form['playlist_id']
 
     if form.get('on') == '1':
-        load_copies(conn, user, canal)
+        # una playlist guardada que no se puede usar se rechaza sin ir a Spotify
+        copy = copias.get_copy(conn, user['id'], playlist_id)
+        if copy is not None and not is_usable(copy, user, canal):
+            return action_failed(request, 'No encontramos esa playlist entre las que podes usar.')
+
+        # unica revision de la biblioteca del request: trae la playlist si todavia no estaba guardada y confirma sus artistas
+        result = refresh_copy(conn, user, playlist_id)
         copy = find_usable_copy(conn, user, canal, playlist_id)
+        if copy is None and result.get('error') is not None:
+            return action_failed(request, 'No pudimos leer esta playlist. Proba mas tarde.')
         if copy is None:
             return action_failed(request, 'No encontramos esa playlist entre las que podes usar.')
 
         # si Spotify falla pero ya hay copia, alcanza: el Run la pone al dia porque la Seed queda sin snapshot
-        result = refresh_copy(conn, user, playlist_id)
-        copy = copias.get_copy(conn, user['id'], playlist_id)
-        if result['status'] == 'failed' and (copy is None or copy['artists_snapshot_id'] is None):
+        if result['status'] == 'failed' and copy['artists_snapshot_id'] is None:
             return action_failed(request, 'No pudimos leer esta playlist. Proba mas tarde.')
 
         canales.add_source(conn, canal['id'], 'seed_playlist', copias.get_artists(conn, user['id'], playlist_id), playlist_id)
@@ -1240,45 +1451,163 @@ def search_artists(request: Request, canal_id, user=Depends(require_user), conn=
             response (TemplateResponse): fragmento con los resultados
     '''
     canal = require_canal(conn, user, canal_id)
-    query = request.query_params.get('q', '').strip()
+    query = ' '.join(request.query_params.get('q', '').split())
     results = []
+    notice = None
+    retry = None
 
-    if query and not canales.uses_seed(conn, canal['id']):
-        # los que ya entran se muestran apagados para que el User vea que estan, sin poder sumarlos de nuevo
-        chosen = {artist['artist_id'] for artist in canales.get_whitelist(conn, canal['id'])}
-        results = [dict(artist, added=artist['id'] in chosen) for artist in spotify.search_artists(get_token(conn, user), query)]
+    # con una letra Spotify devuelve casi cualquier cosa: no gastamos cuota ni base
+    if len(query) >= SEARCH_MIN_CHARS and not canales.uses_seed(conn, canal['id']):
+        text = query.casefold()
+        try:
+            # el User va primero: el cache se limpia por User y el resultado depende del mercado de su token
+            found = search_cache.get((user['id'], 'search', text), lambda: spotify.search_artists(get_token(conn, user), text), ttl=SEARCH_TTL)
+        except (spotify.RateLimited, spotify.QuotaExceeded) as error:
+            notice, retry = limit_notice(error)
+        else:
+            # los que ya entran se muestran apagados para que el User vea que estan, sin poder sumarlos de nuevo
+            chosen = canales.get_whitelist_ids(conn, canal['id'])
+            results = [dict(artist, added=artist['id'] in chosen) for artist in found]
 
-    context = {'canal': canal, 'query': query, 'results': results}
+    context = {'canal': canal, 'query': query if len(query) >= SEARCH_MIN_CHARS else '', 'results': results, 'notice': notice}
     response = templates.TemplateResponse(request, '_busqueda.html', context)
+    if retry is not None:
+        response.headers['Retry-After'] = str(retry)
     return response
 
 
-# un artista sin foto vuelve a buscarse al dia siguiente; una encontrada no cambia en la semana
-PHOTO_MISSING_AGE = 24 * 60 * 60
-PHOTO_FOUND_AGE = 7 * 24 * 60 * 60
+# tope de artistas por tanda de static/fotos.js; Deezer corta a ~50 llamadas cada 5 s y cada foto gasta 1 o 2
+PHOTO_BATCH = 20
 
 
-@app.get('/artistas/foto')
-def find_artist_photo(request: Request):
+# FastAPI necesita la anotacion Request para inyectarlo, es la unica excepcion a no usar type hints
+async def read_json(request: Request):
     '''
-    Foto de un artista que el Run todavia no vinculo: la busca en Deezer y redirige. No toca la base, asi cada avatar no ocupa el pool.
+    Lee un cuerpo JSON; uno roto o vacio queda como dict vacio.
         Args:
-            request (Request): request entrante, con name e isrc opcional
+            request (Request): request entrante
         Returns:
-            response (Response): redirect a la foto, o 404 para que quede la inicial
+            body (dict): cuerpo del request
     '''
-    if not request.session.get('user_id'):
+    try:
+        body = await request.json()
+    except ValueError:
+        return {}
+
+    body = body if isinstance(body, dict) else {}
+    return body
+
+
+def read_photo_hints(conn, user_id, artist_ids):
+    '''
+    Lee lo que hay guardado de cada artista pedido: foto, vinculo con Deezer, y nombre e ISRC de las playlists y Canales del User.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            user_id (int): id interno del User
+            artist_ids (list): ids de Spotify
+        Returns:
+            hints (dict): artist_id -> dict con deezer_artist_id, photo_url, photo_known, name e isrc
+    '''
+    rows = conn.cursor(row_factory=dict_row).execute(
+        f'''
+        SELECT a.id AS artist_id, d.deezer_artist_id, {copias.PHOTO_COLUMNS}, n.name, n.isrc
+        FROM unnest(%s::text[]) a(id)
+        LEFT JOIN deezer_artists d ON d.spotify_artist_id = a.id
+        LEFT JOIN artist_photos p ON p.spotify_artist_id = a.id
+        LEFT JOIN LATERAL (
+            SELECT name, isrc FROM playlist_copy_artists WHERE user_id = %s AND artist_id = a.id
+            UNION ALL
+            SELECT sa.name, sa.isrc FROM source_artists sa
+            JOIN artist_sources s ON s.id = sa.artist_source_id JOIN canales c ON c.id = s.canal_id
+            WHERE c.user_id = %s AND sa.artist_id = a.id
+            ORDER BY isrc NULLS LAST LIMIT 1
+        ) n ON true
+        ''',
+        (artist_ids, user_id, user_id),
+    ).fetchall()
+    hints = {row['artist_id']: row for row in rows}
+    return hints
+
+
+def save_photos(conn, pictures):
+    '''
+    Guarda las fotos encontradas por artista; None es que Deezer no tiene y se vuelve a buscar en un dia.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            pictures (dict): artist_id -> url o None
+    '''
+    with conn.cursor() as cursor:
+        cursor.executemany(
+            '''
+            INSERT INTO artist_photos (spotify_artist_id, url) VALUES (%s, %s)
+            ON CONFLICT (spotify_artist_id) DO UPDATE SET url = EXCLUDED.url, checked_at = now()
+            ''',
+            list(pictures.items()),
+        )
+    conn.commit()
+
+
+def get_conn_opener():
+    '''
+    Para requests que esperan afuera de la base: en vez de tener una conexion todo el request, devuelve como tomar una corta del pool.
+        Returns:
+            opener (callable): sin argumentos, devuelve un context manager con la conexion
+    '''
+    return lambda: get_web_pool().connection()
+
+
+@app.post('/artistas/fotos')
+def find_artist_photos(request: Request, body=Depends(read_json), opener=Depends(get_conn_opener)):
+    '''
+    Fotos de una tanda de avatares que static/fotos.js pide con la pagina quieta: lo guardado sale de la base y el resto se busca en Deezer.
+    La conexion se suelta mientras se espera a Deezer, asi una tanda no ocupa el pool.
+        Args:
+            request (Request): request entrante
+            body (dict): artists, lista de {id, name}; el nombre solo se usa si el User no tiene guardado al artista (Buscador)
+            opener (callable): toma una conexion corta del pool
+        Returns:
+            response (JSONResponse): photos, artist_id -> url o None; los que faltan se reintentan mas tarde
+    '''
+    user_id = request.session.get('user_id')
+    if not user_id:
         return PlainTextResponse('', status_code=401)
 
-    name = request.query_params.get('name', '').strip()
-    try:
-        url = deezer.find_picture_url(name, request.query_params.get('isrc') or None) if name else None
-    except (httpx.HTTPError, deezer.DeezerError):
-        return PlainTextResponse('', status_code=503)
+    asked = body.get('artists') if isinstance(body.get('artists'), list) else []
+    names = {}
+    for artist in asked:
+        if isinstance(artist, dict) and isinstance(artist.get('id'), str) and artist['id'] and len(names) < PHOTO_BATCH:
+            names.setdefault(artist['id'], str(artist.get('name') or '').strip())
 
-    if url is None:
-        return PlainTextResponse('', status_code=404, headers={'Cache-Control': f'private, max-age={PHOTO_MISSING_AGE}'})
-    response = RedirectResponse(url, status_code=302, headers={'Cache-Control': f'private, max-age={PHOTO_FOUND_AGE}'})
+    if not names:
+        return JSONResponse({'photos': {}})
+
+    with opener() as conn:
+        hints = read_photo_hints(conn, user_id, list(names))
+
+    photos = {}
+    search, guessed = [], set()
+    for artist_id, hint in hints.items():
+        if hint['photo_url'] or hint['photo_known']:
+            photos[artist_id] = hint['photo_url']
+        elif hint['name'] or hint['deezer_artist_id']:
+            search.append(dict(hint, name=hint['name'] or names[artist_id]))
+        elif names[artist_id]:
+            # solo el Buscador manda artistas que el User no tiene guardados
+            search.append(dict(hint, name=names[artist_id]))
+            guessed.add(artist_id)
+        else:
+            photos[artist_id] = None
+
+    found = deezer.find_pictures(search) if search else {}
+    photos.update(found)
+
+    # un nombre que mando el navegador no se guarda: una foto equivocada quedaria para todos los Users
+    keep = {artist_id: url for artist_id, url in found.items() if artist_id not in guessed}
+    if keep:
+        with opener() as conn:
+            save_photos(conn, keep)
+
+    response = JSONResponse({'photos': photos})
     return response
 
 

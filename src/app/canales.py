@@ -331,23 +331,78 @@ def get_whitelist(conn, canal_id):
             conn (psycopg.Connection): conexion abierta
             canal_id (int): id del Canal
         Returns:
-            whitelist (list): filas con artist_id, name, isrc, added_at y deezer_artist_id, en orden alfabetico
+            whitelist (list): filas con artist_id, name, isrc, added_at, deezer_artist_id, photo_url y photo_known, en orden alfabetico
     '''
     whitelist = conn.cursor(row_factory=dict_row).execute(
-        '''
-        SELECT w.artist_id, w.added_at, d.deezer_artist_id, sa.name, sa.isrc
+        f'''
+        SELECT w.artist_id, w.added_at, d.deezer_artist_id, sa.name, sa.isrc, {copias.PHOTO_COLUMNS}
         FROM whitelist_artists w
         LEFT JOIN LATERAL (
             SELECT sa.name, sa.isrc FROM source_artists sa JOIN artist_sources s ON s.id = sa.artist_source_id
             WHERE s.canal_id = w.canal_id AND sa.artist_id = w.artist_id ORDER BY sa.isrc NULLS LAST LIMIT 1
         ) sa ON true
         LEFT JOIN deezer_artists d ON d.spotify_artist_id = w.artist_id
+        LEFT JOIN artist_photos p ON p.spotify_artist_id = w.artist_id
         WHERE w.canal_id = %s
         ''',
         (canal_id,),
     ).fetchall()
     whitelist.sort(key=lambda row: copias.artist_sort_key(row['name']))
     return whitelist
+
+
+def get_whitelist_ids(conn, canal_id):
+    '''
+    Ids de la Whitelist del Canal, sin nombres ni fotos: alcanza para marcar en el Buscador los ya agregados.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            canal_id (int): id del Canal
+        Returns:
+            ids (set): ids de Spotify de los artistas
+    '''
+    rows = conn.execute('SELECT artist_id FROM whitelist_artists WHERE canal_id = %s', (canal_id,)).fetchall()
+    ids = {row[0] for row in rows}
+    return ids
+
+
+def get_whitelist_artist(conn, canal_id, artist_id):
+    '''
+    Lee un solo artista de la Whitelist, con lo mismo que trae get_whitelist: lo que pinta su fila al moverlo.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            canal_id (int): id del Canal
+            artist_id (str): id de Spotify del artista
+        Returns:
+            artist (dict): fila con artist_id, name, isrc, added_at y deezer_artist_id, o None si no entra
+    '''
+    artist = conn.cursor(row_factory=dict_row).execute(
+        f'''
+        SELECT w.artist_id, w.added_at, d.deezer_artist_id, sa.name, sa.isrc, {copias.PHOTO_COLUMNS}
+        FROM whitelist_artists w
+        LEFT JOIN LATERAL (
+            SELECT sa.name, sa.isrc FROM source_artists sa JOIN artist_sources s ON s.id = sa.artist_source_id
+            WHERE s.canal_id = w.canal_id AND sa.artist_id = w.artist_id ORDER BY sa.isrc NULLS LAST LIMIT 1
+        ) sa ON true
+        LEFT JOIN deezer_artists d ON d.spotify_artist_id = w.artist_id
+        LEFT JOIN artist_photos p ON p.spotify_artist_id = w.artist_id
+        WHERE w.canal_id = %s AND w.artist_id = %s
+        ''',
+        (canal_id, artist_id),
+    ).fetchone()
+    return artist
+
+
+def count_whitelist(conn, canal_id):
+    '''
+    Cuenta los artistas de la Whitelist, para el contador de la Columna derecha y de la Fila de Canal.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            canal_id (int): id del Canal
+        Returns:
+            count (int): artistas que entran
+    '''
+    count = conn.execute('SELECT count(*) FROM whitelist_artists WHERE canal_id = %s', (canal_id,)).fetchone()[0]
+    return count
 
 
 def refresh_sources(conn, access_token, canal, library):

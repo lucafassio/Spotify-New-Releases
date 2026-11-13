@@ -1,0 +1,17 @@
+{% import '_macros.html' as ui %}
+<div class="col-body scroll" id="col-seeds">
+        <small>Con una prendida, este Canal trae a todos sus artistas y deja de usar tu Lista manual, que queda guardada. Con ninguna, vuelve a ella.</small>
+        <div class="stack" style="gap:6px">
+          {% for row in rows %}
+          <div class="pl {{ 'on' if row.source }}" id="pl-{{ row.playlist_id }}">
+            <div class="pl-row">{{ ui.switch('/canales/' ~ canal.id ~ '/seeds', row.source is not none, {'playlist_id': row.playlist_id}, n='Interruptor de playlist', label=row.name) }}
+              {{ ui.cover(row.name, row.playlist_id, 40, row.image_url) }}
+              <span class="grow"><span class="nm ellip">{{ row.name }}</span>
+                <small class="nums">{% if row.source %}{{ row.source.main_count }} artistas{% if row.source.include_feats %} + {{ row.source.feat_count }} invitados{% endif %}{% else %}{{ row.total }} canciones{% endif %}</small></span></div>
+            {% if row.source %}
+            <div class="pl-art"><div class="row" data-n="Interruptor Feats">{{ ui.switch('/canales/' ~ canal.id ~ '/feats', row.source.include_feats, {'playlist_id': row.playlist_id}, label='Sumar invitados de ' ~ row.name) }}<span class="grow">Sumar tambien a los invitados</span><small class="nums">+{{ row.source.feat_count }}</small></div></div>
+            {% endif %}
+          </div>
+          {% else %}<small>No tenes playlists que se puedan usar.</small>{% endfor %}
+        </div>
+      </div>
