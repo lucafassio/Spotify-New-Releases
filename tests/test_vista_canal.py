@@ -653,14 +653,6 @@ def test_seed_with_no_artists_does_not_ask_to_choose(canal, db, spotify):
     assert 'todavia no aportan artistas' in text
 
 
-def test_ajustes_shows_a_new_playlist(canal, spotify):
-    read_once(canal, spotify, [entry('t1', 'Duki')])
-    other = uid('n')
-    library(spotify, playlist(canal['target'], 'Radar', canal['owner']), playlist(canal['pid'], 'Trap', canal['owner'], total=1), playlist(other, 'Nueva', canal['owner']))
-
-    assert f'id="pl-{other}"' in canal['client'].get(f'/canales/{canal["canal_id"]}/ajustes').text
-
-
 def test_each_canal_decides_on_its_own(canal, db, spotify):
     other = canales.create_canal(db, canal['user_id'], uid('t'), 'Otro', True)
     canales.add_manual_artist(db, other, 'bb', 'Bad Bunny')
@@ -705,6 +697,141 @@ def test_missing_target_warns_in_ajustes(canal, spotify):
     text = canal['client'].get(f'/canales/{canal["canal_id"]}/ajustes').text
 
     assert 'data-n="Aviso de playlist perdida"' in text
+
+
+def ajustes_urls(canal):
+    '''
+    Paths de la Vista Ajustes del Canal.
+        Returns:
+            paths (tuple): pagina completa y refresco de la biblioteca por detras
+    '''
+    base = f'/canales/{canal["canal_id"]}/ajustes'
+    return base, f'{base}/refrescar'
+
+
+def test_ajustes_paints_from_copies_without_spotify(canal, spotify):
+    read_once(canal, spotify, [entry('t1', 'Duki')])
+    web.library_cache.clear()
+    calls = spotify.calls.call_count
+    page, refresh = ajustes_urls(canal)
+
+    text = canal['client'].get(page).text
+
+    assert f'id="pl-{canal["pid"]}"' in text
+    assert f'hx-get="{refresh}"' in text
+    assert 'hx-trigger="load"' in text
+    assert spotify.calls.call_count == calls
+
+
+def test_first_ajustes_reads_spotify_once(canal, spotify):
+    route = library(spotify, playlist(canal['pid'], 'Trap', canal['owner']))
+    page, refresh = ajustes_urls(canal)
+
+    text = canal['client'].get(page).text
+    refreshed = canal['client'].get(refresh)
+
+    assert f'id="pl-{canal["pid"]}"' in text
+    assert route.call_count == 1
+    assert refreshed.status_code == 204
+
+
+def test_ajustes_refresh_brings_a_new_playlist_that_can_be_a_seed(canal, db, spotify):
+    read_once(canal, spotify, [entry('t1', 'Duki')])
+    other = uid('n')
+    route = library(spotify, playlist(canal['target'], 'Radar', canal['owner']), playlist(canal['pid'], 'Trap', canal['owner'], total=1), playlist(other, 'Nueva', canal['owner'], total=1))
+    route.reset()
+    items(spotify, other, [entry('t9', 'Mora')])
+    page, refresh = ajustes_urls(canal)
+
+    text = canal['client'].get(page).text
+    refreshed = canal['client'].get(refresh)
+    canal['client'].post(f'/canales/{canal["canal_id"]}/seeds', data={'playlist_id': other, 'on': '1'}, headers={'HX-Request': 'true'})
+
+    assert f'id="pl-{other}"' not in text
+    assert refreshed.text.lstrip().startswith('<div class="col-body scroll" id="col-seeds"')
+    assert f'id="pl-{other}"' in refreshed.text
+    assert route.call_count == 1
+    assert [row['name'] for row in canales.get_whitelist(db, canal['canal_id'])] == ['Mora']
+
+
+def test_ajustes_refresh_drops_a_gone_playlist(canal, spotify):
+    read_once(canal, spotify, [entry('t1', 'Duki')])
+    library(spotify, playlist(canal['target'], 'Radar', canal['owner']))
+
+    refreshed = canal['client'].get(ajustes_urls(canal)[1])
+
+    assert refreshed.status_code == 200
+    assert f'id="pl-{canal["pid"]}"' not in refreshed.text
+
+
+def test_ajustes_refresh_without_changes_is_empty(canal, spotify):
+    read_once(canal, spotify, [entry('t1', 'Duki')], snapshot='v1')
+    route = library(spotify, playlist(canal['pid'], 'Trap', canal['owner'], total=1, snapshot='v2'), playlist(canal['target'], 'Radar', canal['owner']))
+    route.reset()
+
+    refreshed = canal['client'].get(ajustes_urls(canal)[1])
+
+    assert route.call_count == 1
+    assert refreshed.status_code == 204
+    assert refreshed.text == ''
+
+
+def test_ajustes_refresh_hides_spotify_failure(canal, spotify):
+    read_once(canal, spotify, [entry('t1', 'Duki')])
+    web.library_cache.clear()
+    spotify.get(f'{API_URL}/me/playlists').respond(503)
+
+    refreshed = canal['client'].get(ajustes_urls(canal)[1])
+
+    assert refreshed.status_code == 204
+    assert 'HX-Retarget' not in refreshed.headers
+
+
+def test_seed_on_without_copies_syncs_the_library_once(canal, db, spotify, monkeypatch):
+    synced = []
+    sync = web.sync_library
+    monkeypatch.setattr(web, 'sync_library', lambda conn, user: synced.append(1) or sync(conn, user))
+
+    seed_on(canal, spotify, [entry('t1', 'Duki')])
+
+    assert len(synced) == 1
+    assert [row['name'] for row in canales.get_whitelist(db, canal['canal_id'])] == ['Duki']
+
+
+def test_seed_on_without_copies_and_spotify_down_gives_an_aviso(canal, db, spotify):
+    web.library_cache.clear()
+    spotify.get(f'{API_URL}/me/playlists').respond(503)
+
+    response = canal['client'].post(f'/canales/{canal["canal_id"]}/seeds', data={'playlist_id': canal['pid'], 'on': '1'}, headers={'HX-Request': 'true'})
+
+    assert response.headers['HX-Retarget'] == '#action-notice'
+    assert 'No pudimos leer esta playlist' in response.text
+    assert canales.get_sources(db, canal['canal_id']) == []
+
+
+def test_seed_on_with_copies_reads_spotify_once(canal, spotify):
+    read_once(canal, spotify, [entry('t1', 'Duki')])
+    route = library(spotify, playlist(canal['pid'], 'Trap', canal['owner'], total=1), playlist(canal['target'], 'Radar', canal['owner']))
+    route.reset()
+    calls = spotify.calls.call_count
+
+    canal['client'].post(f'/canales/{canal["canal_id"]}/seeds', data={'playlist_id': canal['pid'], 'on': '1'}, headers={'HX-Request': 'true'})
+
+    assert route.call_count == 1
+    assert spotify.calls.call_count == calls + 1
+
+
+def test_seed_off_and_feats_do_not_call_spotify(canal, spotify):
+    seed_on(canal, spotify, [entry('t1', 'Duki', 'YSY')])
+    web.library_cache.clear()
+    calls = spotify.calls.call_count
+    base = f'/canales/{canal["canal_id"]}'
+    headers = {'HX-Request': 'true'}
+
+    canal['client'].post(f'{base}/feats', data={'playlist_id': canal['pid'], 'on': '1'}, headers=headers)
+    canal['client'].post(f'{base}/seeds', data={'playlist_id': canal['pid'], 'on': '0'}, headers=headers)
+
+    assert spotify.calls.call_count == calls
 
 
 def test_scope_no_longer_asks_for_follows():
