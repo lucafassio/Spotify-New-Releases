@@ -20,20 +20,21 @@ class WebCache:
 
     def get(self, key, load, ttl=60):
         '''
-        Reutiliza una entrada vigente o carga una copia nueva, sin guardar errores.
+        Reutiliza una entrada vigente o carga una nueva, sin guardar errores.
+        Se copia una sola vez, al guardar: un acierto devuelve el valor guardado, compartido entre requests, y el llamador no lo muta.
             Args:
                 key (tuple): clave cuyo primer elemento identifica al User
                 load (callable): obtiene el dato si falta
                 ttl (int): segundos de vigencia
             Returns:
-                value (object): copia independiente del dato
+                value (object): lo que devolvio load al cargar, o el valor guardado en un acierto (solo lectura)
         '''
         while True:
             with self.lock:
                 cached = self.entries.get(key)
                 if cached and cached[0] > time.monotonic():
                     self.entries.move_to_end(key)
-                    return deepcopy(cached[1])
+                    return cached[1]
 
                 pending = self.loading.get(key)
                 if pending is None:
