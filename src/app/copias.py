@@ -15,6 +15,10 @@ COVER_SIZE = 112
 # lo que puede fallar al leer de Spotify; el refresco lo devuelve como resultado para que la web siga con la copia
 READ_ERRORS = (httpx.HTTPError, spotify.RateLimited, spotify.QuotaExceeded)
 
+# foto guardada de un artista (#23), con artist_photos como p: photo_known dice que no hay que buscarla,
+# porque tiene url o porque hace menos de un dia que Deezer dijo que no tiene
+PHOTO_COLUMNS = "p.url AS photo_url, coalesce(p.url IS NOT NULL OR p.checked_at > now() - interval '1 day', false) AS photo_known"
+
 
 def artist_sort_key(name):
     '''
@@ -131,9 +135,10 @@ def get_playlist_artist(conn, user_id, playlist_id, artist_id):
             artist (dict): artist_id, name, feat, isrc y deezer_artist_id, o None si no esta en la copia
     '''
     artist = conn.cursor(row_factory=dict_row).execute(
-        '''
-        SELECT a.artist_id, a.name, a.feat, a.isrc, d.deezer_artist_id
+        f'''
+        SELECT a.artist_id, a.name, a.feat, a.isrc, d.deezer_artist_id, {PHOTO_COLUMNS}
         FROM playlist_copy_artists a LEFT JOIN deezer_artists d ON d.spotify_artist_id = a.artist_id
+        LEFT JOIN artist_photos p ON p.spotify_artist_id = a.artist_id
         WHERE a.user_id = %s AND a.playlist_id = %s AND a.artist_id = %s
         ''',
         (user_id, playlist_id, artist_id),
@@ -165,21 +170,26 @@ def count_unchosen(conn, user_id, playlist_id, canal_id):
 
 def add_deezer_ids(conn, artists):
     '''
-    Suma a cada artista su id de Deezer, para la foto; uno que el Run nunca vinculo queda en None.
+    Suma a cada artista su id de Deezer y su foto guardada; uno que el Run nunca vinculo queda en None.
         Args:
             conn (psycopg.Connection): conexion abierta
             artists (list): dicts con artist_id, se modifican en el lugar
         Returns:
-            artists (list): los mismos dicts con deezer_artist_id
+            artists (list): los mismos dicts con deezer_artist_id, photo_url y photo_known (ver PHOTO_COLUMNS)
     '''
     rows = conn.execute(
-        'SELECT spotify_artist_id, deezer_artist_id FROM deezer_artists WHERE spotify_artist_id = ANY(%s)',
+        f'''
+        SELECT a.id, d.deezer_artist_id, {PHOTO_COLUMNS}
+        FROM unnest(%s::text[]) a(id)
+        LEFT JOIN deezer_artists d ON d.spotify_artist_id = a.id
+        LEFT JOIN artist_photos p ON p.spotify_artist_id = a.id
+        ''',
         ([artist['artist_id'] for artist in artists],),
     ).fetchall()
-    deezer_ids = dict(rows)
+    found = {row[0]: row[1:] for row in rows}
 
     for artist in artists:
-        artist['deezer_artist_id'] = deezer_ids.get(artist['artist_id'])
+        artist['deezer_artist_id'], artist['photo_url'], artist['photo_known'] = found.get(artist['artist_id'], (None, None, False))
     return artists
 
 

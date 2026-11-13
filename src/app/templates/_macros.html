@@ -9,8 +9,8 @@
 <span class="cover" style="--h:{{ key | hue }};width:{{ size }}px;height:{{ size }}px"><span style="font-size:{{ (size * 0.62) | round | int }}px">{{ name | initial }}</span>{{ picture(image) }}</span>
 {%- endmacro %}
 
-{% macro avatar(name, size=22, photo=none) -%}
-<span class="avatar" style="--h:{{ name | hue }};width:{{ size }}px;height:{{ size }}px;font-size:{{ (size * 0.42) | round | int }}px">{{ name | initial }}{{ picture(photo) }}</span>
+{% macro avatar(name, size=22, photo=none, lookup=none) -%}
+<span class="avatar"{% if lookup %} data-foto="{{ lookup }}" data-foto-nombre="{{ name }}"{% endif %} style="--h:{{ name | hue }};width:{{ size }}px;height:{{ size }}px;font-size:{{ (size * 0.42) | round | int }}px">{{ name | initial }}{{ picture(photo) }}</span>
 {%- endmacro %}
 
 {# Interruptor: un form por switch para que funcione igual sin JS #}
@@ -24,7 +24,7 @@
 
 {# Fila de artista de la Columna izquierda: id con la playlist, para bajarla sin tocar el resto de la lista #}
 {% macro playlist_artist(canal_id, playlist_id, artist) -%}
-<div class="fila" id="art-{{ playlist_id }}-{{ artist.artist_id }}" data-sort="{{ artist.name | artist_key }}" data-n="Fila de artista">{{ avatar(artist.name, 26, artist | artist_photo) }}<span class="grow ellip">{{ artist.name }}</span>
+<div class="fila" id="art-{{ playlist_id }}-{{ artist.artist_id }}" data-sort="{{ artist.name | artist_key }}" data-n="Fila de artista">{{ avatar(artist.name, 26, artist | artist_photo, artist | photo_lookup) }}<span class="grow ellip">{{ artist.name }}</span>
   <form method="post" action="/canales/{{ canal_id }}/artistas/sumar" data-flecha="sumar" hx-post="/canales/{{ canal_id }}/artistas/sumar" hx-swap="none" hx-disabled-elt="find button"><input type="hidden" name="playlist_id" value="{{ playlist_id }}"><input type="hidden" name="artist_id" value="{{ artist.artist_id }}"><button class="flecha" aria-label="Sumar a {{ artist.name }}" data-n="Flecha de artista">&rarr;</button></form>
 </div>
 {%- endmacro %}
@@ -33,16 +33,16 @@
 {% macro whitelist_row(canal_id, artist, movable, open_id) -%}
 <div class="fila" id="wl-{{ artist.artist_id }}" data-sort="{{ artist.name | artist_key }}" data-n="Fila de artista">
   {% if movable %}<form method="post" action="/canales/{{ canal_id }}/artistas/quitar" data-flecha="quitar" hx-post="/canales/{{ canal_id }}/artistas/quitar" hx-swap="none" hx-disabled-elt="find button"><input type="hidden" name="artist_id" value="{{ artist.artist_id }}"><input type="hidden" name="open" value="{{ open_id or '' }}"><button class="flecha" aria-label="Sacar a {{ artist.name }}" data-n="Flecha de artista">&larr;</button></form>{% endif %}
-  {{ avatar(artist.name or '?', 26, artist | artist_photo) }}<span class="grow ellip">{{ artist.name }}</span>
+  {{ avatar(artist.name or '?', 26, artist | artist_photo, artist | photo_lookup) }}<span class="grow ellip">{{ artist.name }}</span>
 </div>
 {%- endmacro %}
 
 {# Resultado del Buscador: uno que ya entra queda apagado y sin form; oob lo reemplaza al sumarlo #}
 {% macro search_result(canal_id, artist, oob=false) -%}
-{% if artist.added %}<div id="res-{{ artist.id }}" class="res added" {% if oob %}hx-swap-oob="true"{% endif %} data-n="Resultado agregado">{{ avatar(artist.name, 26, artist | artist_photo) }}<span class="grow ellip">{{ artist.name }}</span><small class="tag">added</small></div>
+{% if artist.added %}<div id="res-{{ artist.id }}" class="res added" {% if oob %}hx-swap-oob="true"{% endif %} data-n="Resultado agregado">{{ avatar(artist.name, 26, artist | artist_photo, artist | photo_lookup) }}<span class="grow ellip">{{ artist.name }}</span><small class="tag">added</small></div>
 {% else %}<form id="res-{{ artist.id }}" method="post" action="/canales/{{ canal_id }}/manual" data-flecha="manual" data-sort="{{ artist.name | artist_key }}" hx-post="/canales/{{ canal_id }}/manual" hx-swap="none" hx-disabled-elt="find button">
     <input type="hidden" name="artist_id" value="{{ artist.id }}"><input type="hidden" name="name" value="{{ artist.name }}"><input type="hidden" name="image" value="{{ artist.image or '' }}">
-    <button class="res">{{ avatar(artist.name, 26, artist | artist_photo) }}<span class="grow ellip">{{ artist.name }}</span></button>
+    <button class="res">{{ avatar(artist.name, 26, artist | artist_photo, artist | photo_lookup) }}<span class="grow ellip">{{ artist.name }}</span></button>
   </form>{% endif %}
 {%- endmacro %}
 
