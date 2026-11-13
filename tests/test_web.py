@@ -1,11 +1,12 @@
 import base64
+import hashlib
 import uuid
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import users
+from app import users, web
 from app.spotify import ACCOUNTS_URL, API_URL
 from app.web import app, get_conn
 
@@ -61,7 +62,56 @@ def test_home_without_session_shows_login(db_client):
     response = db_client.get('/')
 
     assert 'Conectar con Spotify' in response.text
-    assert 'htmx.org' in response.text
+    assert 'htmx-2.0.4.min.js' in response.text
+
+
+def test_boosted_click_without_session_loads_the_whole_login(db_client):
+    # un click boosteado swapea en el Panel: la Pantalla de login tiene que llegar por recarga completa
+    response = db_client.get('/', headers={'HX-Request': 'true', 'HX-Boosted': 'true'})
+
+    assert response.headers['hx-redirect'] == '/'
+    assert 'Conectar con Spotify' not in response.text
+
+
+def test_back_without_session_restores_the_whole_login(db_client):
+    # el back sin snapshot reemplaza el body con lo que llega: no sigue un HX-Redirect
+    response = db_client.get('/', headers={'HX-Request': 'true', 'HX-History-Restore-Request': 'true'})
+
+    assert 'Conectar con Spotify' in response.text
+
+
+def test_versioned_static_is_cached_for_a_year(client):
+    response = client.get(web.static_url('app.js'))
+
+    assert response.status_code == 200
+    assert response.headers['cache-control'] == 'public, max-age=31536000, immutable'
+
+
+def test_static_without_current_version_is_not_frozen(client):
+    plain = client.get('/static/app.js')
+    stale = client.get('/static/app.js?v=vieja')
+    icon = client.get('/static/favicon-32.png')
+
+    assert 'immutable' not in plain.headers.get('cache-control', '')
+    assert 'immutable' not in stale.headers.get('cache-control', '')
+    assert 'immutable' not in icon.headers.get('cache-control', '')
+
+
+def test_static_version_follows_the_content():
+    url = web.static_url('app.css')
+    content = (web.STATIC_DIR / 'app.css').read_bytes()
+
+    assert url == f"/static/app.css?v={hashlib.sha256(content).hexdigest()[:10]}"
+
+
+def test_static_url_versions_any_file_of_static(client):
+    # los JS que suman otros cambios (flechas.js, fotos.js) se enganchan con el mismo helper
+    url = web.static_url('favicon-32.png')
+    response = client.get(url)
+
+    assert '?v=' in url
+    assert response.headers['cache-control'] == 'public, max-age=31536000, immutable'
+    assert web.static_url('no-existe.js') == '/static/no-existe.js'
 
 
 def test_login_redirects_to_spotify_authorize(client):

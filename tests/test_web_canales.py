@@ -273,11 +273,101 @@ def test_spotify_failure_shows_aviso_instead_of_500(logged, db, spotify):
 
 
 def test_every_view_carries_the_css_of_all_views(logged):
-    # hx-boost cambia solo el body: si Inicio no trae el CSS de la Vista Canal, al navegar las filas se desarman
+    # la navegacion cambia solo el Panel: si Inicio no trae el CSS de la Vista Canal, al navegar las filas se desarman
+    response = logged['client'].get('/')
+    css = logged['client'].get(web.static_url('app.css'))
+
+    assert f'href="{web.static_url("app.css")}"' in response.text
+    assert '.pl-row' in css.text
+    assert '.optlist' in css.text
+
+
+def test_page_has_no_big_inline_css_or_js(logged):
     response = logged['client'].get('/')
 
-    assert '.pl-row' in response.text
-    assert '.optlist' in response.text
+    assert '.pl-row' not in response.text
+    assert 'addEventListener' not in response.text
+    assert f'<script src="{web.static_url("app.js")}" defer></script>' in response.text
+    assert f'<script src="{web.static_url("htmx-2.0.4.min.js")}" defer></script>' in response.text
+    assert 'unpkg.com' not in response.text
+
+
+BOOSTED = {'HX-Request': 'true', 'HX-Boosted': 'true'}
+
+
+def views(db, logged, spotify):
+    '''
+    Paths de las cuatro vistas del dashboard, con un Canal propio y la biblioteca mockeada.
+        Returns:
+            paths (list): Inicio, Canal, Ajustes y Nuevo Canal
+    '''
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    mock_library(spotify, logged['spotify_user_id'])
+    paths = ['/', f'/canales/{canal_id}', f'/canales/{canal_id}/ajustes', '/canales/nuevo']
+    return paths
+
+
+def test_direct_entry_gets_the_whole_page(logged, db, spotify):
+    for path in views(db, logged, spotify):
+        response = logged['client'].get(path)
+
+        assert response.text.startswith('<!doctype html>'), path
+        assert 'data-n="Perfil"' in response.text, path
+        assert '<div id="vista" class="vista">' in response.text, path
+
+
+def test_boosted_click_gets_only_panel_and_sidebar(logged, db, spotify):
+    for path in views(db, logged, spotify):
+        response = logged['client'].get(path, headers=BOOSTED)
+
+        assert '<html' not in response.text, path
+        assert 'data-n="Perfil"' not in response.text, path
+        assert '<title>Radar de Viernes</title>' in response.text, path
+        assert 'data-n="Panel"' in response.text, path
+        assert 'id="nav-inicio" hx-swap-oob="outerHTML"' in response.text, path
+        assert 'id="lista-canales" hx-swap-oob="outerHTML"' in response.text, path
+        assert 'HX-Boosted' in response.headers['vary'], path
+        assert response.headers['cache-control'] == 'no-store', path
+
+
+def test_boosted_click_marks_its_row_in_the_sidebar(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    mock_library(spotify, logged['spotify_user_id'])
+
+    canal = logged['client'].get(f'/canales/{canal_id}', headers=BOOSTED)
+    home = logged['client'].get('/', headers=BOOSTED)
+
+    assert 'class="nav-row on" href="/canales/' in canal.text
+    assert 'class="nav-row on" href="/"' not in canal.text
+    assert 'class="nav-row on" href="/"' in home.text
+    assert 'id="canal-panel"' in canal.text
+    # la vista abierta no se precarga: el mouse que quedo encima tras el click no vuelve a pedirla
+    assert 'href="/" preload="mouseover"' in canal.text
+    assert 'href="/" preload="mouseover"' not in home.text
+    assert f'href="/canales/{canal_id}" preload="mouseover"' in home.text
+    assert f'href="/canales/{canal_id}" preload="mouseover"' not in canal.text
+
+
+def test_preloaded_view_is_cached_for_a_few_seconds(logged):
+    response = logged['client'].get('/', headers=dict(BOOSTED, **{'HX-Preloaded': 'true'}))
+
+    assert response.headers['cache-control'] == f'private, max-age={web.PRELOAD_AGE}'
+
+
+def test_session_cookie_is_not_rewritten_on_every_click(logged):
+    # una cookie nueva por respuesta rompe el Vary: Cookie y la vista precargada nunca se reusa
+    page = logged['client'].get('/')
+    click = logged['client'].get('/', headers=BOOSTED)
+
+    assert 'set-cookie' not in page.headers
+    assert 'set-cookie' not in click.headers
+
+
+def test_back_without_snapshot_gets_the_whole_page(logged):
+    # htmx pide la pagina para reemplazar el body cuando no tiene la vista guardada
+    response = logged['client'].get('/', headers=dict(BOOSTED, **{'HX-History-Restore-Request': 'true'}))
+
+    assert response.text.startswith('<!doctype html>')
 
 
 def test_run_now_queues_the_run(logged, db, monkeypatch):

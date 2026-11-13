@@ -20,6 +20,9 @@ La lista nunca se reordena mientras se lee: lo que llega durante la lectura va a
 Con Seed Playlists prendidas, la Columna izquierda queda apagada y no responde.
 Un cambio hecho directamente en Spotify puede tardar uno o dos minutos en verse (ADR 0008).
 Durante un envio se deshabilita su boton; los errores de conexion o limites de Spotify aparecen como Aviso de accion sin borrar la vista.
+Navegar entre vistas (Barra lateral, Boton Ajustes, Nuevo Canal) cambia solo el Panel y la Barra lateral; la pagina entera llega solo al entrar por URL o recargar.
+Apoyar el mouse sobre una Fila de Canal o el Boton Inicio precarga su vista: el click la muestra sin esperar al servidor.
+Los tokens y el CSS de todas las vistas viven en `src/app/static/app.css` (un solo archivo, cacheado con version en la URL).
 
 ## Principios
 
