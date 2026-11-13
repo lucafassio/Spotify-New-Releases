@@ -205,7 +205,7 @@ def test_arrow_forms_are_marked_for_the_optimistic_move(canal, db, spotify):
 
     assert 'data-flecha="sumar"' in page
     assert 'data-flecha="quitar"' in page
-    assert '<script src="/static/flechas.js" defer></script>' in page
+    assert '<script src="/static/flechas.js?v=' in page
     # el Resultado trae su clave de orden para que el navegador lo ubique en la Columna derecha
     assert 'data-flecha="manual"' in results
     assert 'data-sort="zoe"' in results
