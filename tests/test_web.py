@@ -97,6 +97,51 @@ def test_static_without_current_version_is_not_frozen(client):
     assert 'immutable' not in icon.headers.get('cache-control', '')
 
 
+def stale_session(client, user_id=4242):
+    '''
+    Pone en el cliente una sesion firmada como la de SessionMiddleware, vista por ultima vez hace dias.
+        Args:
+            client (TestClient): cliente que manda la cookie
+            user_id (int): id del User de la sesion
+    '''
+    import json
+
+    from itsdangerous import TimestampSigner
+
+    data = base64.b64encode(json.dumps({'user_id': user_id, 'seen': 0}).encode())
+    client.cookies.set('session', TimestampSigner(web.get_env('SESSION_SECRET')).sign(data).decode())
+
+
+def test_stale_session_is_renewed_on_a_page(client):
+    stale_session(client)
+    response = client.get('/health')
+
+    assert 'session=' in response.headers.get('set-cookie', '')
+
+
+def test_static_and_photos_do_not_renew_the_session(client):
+    # el navegador pide estaticos y tandas de fotos sin parar: ninguno reescribe la cookie ni varia por ella
+    stale_session(client)
+    static = client.get(web.static_url('app.js'))
+    plain = client.get('/static/favicon-32.png')
+    photos = client.post('/artistas/fotos', json={'artists': []})
+
+    assert static.status_code == plain.status_code == photos.status_code == 200
+    assert 'set-cookie' not in static.headers
+    assert 'set-cookie' not in plain.headers
+    assert 'set-cookie' not in photos.headers
+    assert 'cookie' not in static.headers.get('vary', '').lower()
+
+
+def test_fonts_do_not_block_the_first_paint():
+    html = web.templates.env.get_template('base.html').render()
+    blocking = [line for line in html.splitlines() if 'fonts.googleapis.com/css2' in line and 'rel="stylesheet"' in line and 'media="print"' not in line and '<noscript>' not in line]
+
+    assert 'rel="preload" as="style"' in html
+    assert 'family=Archivo:wdth,wght@62..125,400..900&amp;family=Figtree:wght@400..700&amp;display=swap' in html
+    assert blocking == []
+
+
 def test_static_version_follows_the_content():
     url = web.static_url('app.css')
     content = (web.STATIC_DIR / 'app.css').read_bytes()

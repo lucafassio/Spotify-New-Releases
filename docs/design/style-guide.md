@@ -76,7 +76,8 @@ recuerda un dia. La inicial queda si no hay foto o no carga.
 El avatar del Perfil lleva la foto de perfil de Spotify del User.
 
 **Rueda**: los paneles con scroll corren 70% de lo que pide la rueda y frenan rapido, con
-menos deslizamiento que el del navegador.
+menos deslizamiento que el del navegador. Solo los paneles que desbordan: un panel que entra
+entero y todo lo que no es panel usan la rueda del navegador tal cual.
 
 ## Tipografia
 

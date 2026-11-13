@@ -174,12 +174,17 @@ app = FastAPI(lifespan=lifespan)
 app.mount('/static', VersionedStaticFiles(directory=STATIC_DIR), name='static')
 SESSION_AGE = 60 * 60 * 24 * 30
 SESSION_RENEW_AGE = 60 * 60
+# el navegador los pide solo, sin que el User haga nada: no cuentan como entrar ni reescriben la cookie
+NO_RENEW_PREFIXES = ('/static/', '/artistas/fotos')
 
 
 # va antes de SessionMiddleware para quedar adentro y ver request.session
 @app.middleware('http')
 async def renew_session(request: Request, call_next):
     '''Renueva la cookie como mucho una vez por hora: la sesion vence solo tras 30 dias sin entrar.'''
+    # sin leer la sesion los estaticos tampoco salen con Vary: Cookie
+    if request.url.path.startswith(NO_RENEW_PREFIXES):
+        return await call_next(request)
     # una cookie distinta en cada respuesta rompe el Vary: Cookie y la vista precargada nunca se reusa
     if request.session.get('user_id') and time.time() - request.session.get('seen', 0) > SESSION_RENEW_AGE:
         request.session['seen'] = int(time.time())
