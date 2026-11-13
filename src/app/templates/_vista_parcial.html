@@ -1,0 +1,6 @@
+{# respuesta a un click boosteado: el Panel va a #vista (hx-target del body en shell.html) y la Barra lateral se actualiza fuera de banda #}
+<title>{% block title %}Radar de Viernes{% endblock %}</title>
+{% block panel %}{% endblock %}
+{% set barra_oob = true %}
+{% include '_nav_inicio.html' %}
+{% include '_lista_canales.html' %}

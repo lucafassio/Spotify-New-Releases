@@ -1,3 +1,4 @@
+import hashlib
 import os
 import secrets
 import time
@@ -89,18 +90,83 @@ async def lifespan(app):
         token_cache.clear()
 
 
+STATIC_DIR = Path(__file__).parent / 'static'
+
+
+def get_static_version(name):
+    '''
+    Version de un archivo de /static a partir de su contenido; se calcula una vez y queda guardada.
+        Args:
+            name (str): path relativo a static con barras normales, por ejemplo 'app.js'
+        Returns:
+            version (str): primeros 10 caracteres del sha256, o None si el archivo no existe
+    '''
+    if name not in STATIC_VERSIONS:
+        path = STATIC_DIR / name
+        STATIC_VERSIONS[name] = hashlib.sha256(path.read_bytes()).hexdigest()[:10] if path.is_file() else None
+    return STATIC_VERSIONS[name]
+
+
+# todo archivo de /static (subcarpetas incluidas) al arrancar; uno que aparezca despues se calcula al pedirlo
+STATIC_VERSIONS = {}
+for static_path in STATIC_DIR.rglob('*'):
+    if static_path.is_file():
+        get_static_version(static_path.relative_to(STATIC_DIR).as_posix())
+
+
+def static_url(name):
+    '''
+    URL de cualquier archivo de /static con su version: cambia cuando cambia el contenido y el navegador baja el nuevo.
+        Args:
+            name (str): path relativo a static, por ejemplo 'app.js' o 'flechas.js'
+        Returns:
+            url (str): path con ?v=version, o sin version si el archivo no existe
+    '''
+    version = get_static_version(name)
+    url = f'/static/{name}?v={version}' if version else f'/static/{name}'
+    return url
+
+
+templates.env.globals['static_url'] = static_url
+
+
+class VersionedStaticFiles(StaticFiles):
+    '''Sirve /static con cache de un anio solo si la URL trae la version vigente del archivo.'''
+
+    async def get_response(self, path, scope):
+        '''
+        Agrega Cache-Control inmutable a las URLs versionadas; las demas quedan con la revalidacion de siempre.
+            Args:
+                path (str): archivo pedido, relativo a static
+                scope (dict): scope ASGI del request
+            Returns:
+                response (Response): archivo o error de StaticFiles
+        '''
+        response = await super().get_response(path, scope)
+        version = parse_qs(scope.get('query_string', b'').decode()).get('v', [''])[0]
+
+        # una version vieja recibe el archivo nuevo: no se cachea para no fijarlo bajo una URL equivocada
+        # en Windows StaticFiles arma el path con barras invertidas
+        if response.status_code == 200 and version and version == get_static_version(path.replace('\\', '/')):
+            response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+
+        return response
+
+
 # cookie firmada, no cifrada: guardamos solo el id del User y datos de pantalla, nunca tokens
 app = FastAPI(lifespan=lifespan)
-# manifest e iconos: la web se instala como app desde Chrome, Edge o el celular
-app.mount('/static', StaticFiles(directory=Path(__file__).parent / 'static'), name='static')
+# manifest e iconos para instalar la web como app; CSS, JS, htmx y sus extensiones con version en la URL
+app.mount('/static', VersionedStaticFiles(directory=STATIC_DIR), name='static')
 SESSION_AGE = 60 * 60 * 24 * 30
+SESSION_RENEW_AGE = 60 * 60
 
 
 # va antes de SessionMiddleware para quedar adentro y ver request.session
 @app.middleware('http')
 async def renew_session(request: Request, call_next):
-    '''Renueva la cookie en cada visita: la sesion vence solo tras 30 dias sin entrar.'''
-    if request.session.get('user_id'):
+    '''Renueva la cookie como mucho una vez por hora: la sesion vence solo tras 30 dias sin entrar.'''
+    # una cookie distinta en cada respuesta rompe el Vary: Cookie y la vista precargada nunca se reusa
+    if request.session.get('user_id') and time.time() - request.session.get('seen', 0) > SESSION_RENEW_AGE:
         request.session['seen'] = int(time.time())
     return await call_next(request)
 
@@ -412,6 +478,35 @@ def shell_context(request, conn, user, **extra):
     return context
 
 
+# segundos que el navegador guarda una vista precargada; navegacion.js usa el mismo numero
+PRELOAD_AGE = 10
+
+
+def render_view(request, name, context):
+    '''
+    Arma una vista del dashboard: la pagina entera al entrar por URL, o solo el Panel y la Barra lateral en un click boosteado (va a #vista).
+        Args:
+            request (Request): request entrante
+            name (str): template de la vista, extiende shell.html
+            context (dict): contexto armado con shell_context
+        Returns:
+            response (TemplateResponse): pagina o fragmento
+    '''
+    # el back sin snapshot de htmx pide la pagina para reemplazar todo el body
+    partial = request.headers.get('HX-Boosted') == 'true' and request.headers.get('HX-History-Restore-Request') != 'true'
+    response = templates.TemplateResponse(request, name, dict(context, vista_parcial=partial))
+    # la misma URL devuelve pagina o fragmento: la cache del navegador tiene que separarlas
+    response.headers.add_vary_header('HX-Boosted')
+    response.headers.add_vary_header('HX-History-Restore-Request')
+
+    if partial:
+        # solo la precarga se guarda, y la usa el click que la sigue
+        preloaded = request.headers.get('HX-Preloaded') == 'true'
+        response.headers['Cache-Control'] = f'private, max-age={PRELOAD_AGE}' if preloaded else 'no-store'
+
+    return response
+
+
 @app.get('/')
 def home(request: Request, conn=Depends(get_conn)):
     '''
@@ -428,12 +523,15 @@ def home(request: Request, conn=Depends(get_conn)):
     # un User borrado a mano por Luca deja sesiones colgadas
     if user is None:
         request.session.pop('user_id', None)
+        # un click boosteado swapea en #vista: la Pantalla de login tiene que cargarse entera
+        if request.headers.get('HX-Boosted') == 'true':
+            return HTMLResponse('', headers={'HX-Redirect': '/'})
         error = LOGIN_ERRORS.get(request.query_params.get('error'))
         response = templates.TemplateResponse(request, 'login.html', {'error': error})
         return response
 
     context = shell_context(request, conn, user, view='inicio')
-    response = templates.TemplateResponse(request, 'dashboard.html', context)
+    response = render_view(request, 'dashboard.html', context)
     return response
 
 
@@ -774,7 +872,7 @@ def new_canal(request: Request, user=Depends(require_user), conn=Depends(get_con
             for p in playlists if p['owner']['id'] == user['spotify_user_id']
         ]
 
-    response = templates.TemplateResponse(request, 'nuevo_canal.html', context)
+    response = render_view(request, 'nuevo_canal.html', context)
     return response
 
 
@@ -839,7 +937,7 @@ def show_canal(request: Request, canal_id, user=Depends(require_user), conn=Depe
         open_id=opened['playlist_id'] if opened else None,
         open_artists=visible_artists(conn, user, opened, whitelist) if opened else None,
     )
-    response = templates.TemplateResponse(request, 'canal.html', context)
+    response = render_view(request, 'canal.html', context)
     return response
 
 
@@ -957,7 +1055,7 @@ def render_settings(request, canal_id, user, conn, partial=False):
     seeds = {source['playlist_id']: source for source in canales.get_sources(conn, canal['id']) if source['type'] == 'seed_playlist'}
     rows = [dict(copy, source=seeds.get(copy['playlist_id'])) for copy in copies if is_usable(copy, user, canal)]
     context = canal_context(request, conn, user, canal, copies, section='ajustes', rows=rows)
-    response = templates.TemplateResponse(request, '_canal_response.html' if partial else 'canal.html', context)
+    response = templates.TemplateResponse(request, '_canal_response.html', context) if partial else render_view(request, 'canal.html', context)
     return response
 
 
