@@ -182,7 +182,7 @@ def test_moves_read_only_the_moved_artist_and_the_count(canal, db, spotify, monk
     removed = client.post(f'{base}/artistas/quitar', data={'artist_id': 'mora', 'open': canal['pid']}, headers=headers)
 
     assert 'id="wl-duki"' in added.text
-    assert '/artistas/foto?name=Duki&amp;isrc=AR1' in added.text
+    assert 'data-foto="duki" data-foto-nombre="Duki"' in added.text
     assert '1 artistas' in added.text
     assert 'id="wl-mora"' in searched.text
     assert 'Ya estan todos' in searched.text
