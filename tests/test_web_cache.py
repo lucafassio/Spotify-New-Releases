@@ -19,6 +19,21 @@ def test_cache_is_scoped_bounded_and_returns_copies():
     assert (1, 'library') not in cache.entries
 
 
+def test_hit_shares_the_stored_copy_without_copying_again():
+    # la biblioteca se lee en cada request: un acierto no copia, la copia se hace una vez al guardar
+    cache = WebCache()
+    loaded = [{'name': 'Uno'}]
+    first = cache.get((1, 'library'), lambda: loaded)
+    loaded[0]['name'] = 'Mutado despues de cargar'
+    second = cache.get((1, 'library'), lambda: [])
+    third = cache.get((1, 'library'), lambda: [])
+
+    assert first is loaded
+    assert second == [{'name': 'Uno'}]
+    assert second is third
+    assert second is not loaded
+
+
 def test_expired_cache_is_reloaded_and_failures_are_not_cached():
     cache = WebCache()
     cache.get((1, 'library'), lambda: 'old', ttl=-1)
@@ -78,7 +93,7 @@ def test_library_lasts_five_minutes_and_a_hit_does_not_touch_the_db(monkeypatch)
     monkeypatch.setattr(web.canales, 'sync_target_names', Mock())
     monkeypatch.setattr(web, 'get_token', lambda *args: 'token')
     monkeypatch.setattr(web, 'library_cache', WebCache())
-    user, conn = {'id': 7}, Mock()
+    user, conn = {'id': 7}, Mock(autocommit=False)
 
     web.sync_library(conn, user)
     now[0] += 4 * 60

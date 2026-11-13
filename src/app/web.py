@@ -25,7 +25,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app import canales, copias, deezer, entregas, runs, spotify, users
 from app.config import get_env, get_shared_app
 from app.crypto import decrypt_text, encrypt_text
-from app.db import close_web_pool, connect, get_web_pool
+from app.db import atomic, close_web_pool, connect, get_web_pool, web_connection
 from app.web_cache import WebCache
 
 templates = Jinja2Templates(directory=Path(__file__).parent / 'templates')
@@ -174,12 +174,17 @@ app = FastAPI(lifespan=lifespan)
 app.mount('/static', VersionedStaticFiles(directory=STATIC_DIR), name='static')
 SESSION_AGE = 60 * 60 * 24 * 30
 SESSION_RENEW_AGE = 60 * 60
+# el navegador los pide solo, sin que el User haga nada: no cuentan como entrar ni reescriben la cookie
+NO_RENEW_PREFIXES = ('/static/', '/artistas/fotos')
 
 
 # va antes de SessionMiddleware para quedar adentro y ver request.session
 @app.middleware('http')
 async def renew_session(request: Request, call_next):
     '''Renueva la cookie como mucho una vez por hora: la sesion vence solo tras 30 dias sin entrar.'''
+    # sin leer la sesion los estaticos tampoco salen con Vary: Cookie
+    if request.url.path.startswith(NO_RENEW_PREFIXES):
+        return await call_next(request)
     # una cookie distinta en cada respuesta rompe el Vary: Cookie y la vista precargada nunca se reusa
     if request.session.get('user_id') and time.time() - request.session.get('seen', 0) > SESSION_RENEW_AGE:
         request.session['seen'] = int(time.time())
@@ -222,9 +227,21 @@ async def interactive_spotify(request: Request, call_next):
         return await call_next(request)
 
 
+def read_only(endpoint):
+    '''
+    Marca una vista que solo lee: su conexion va en autocommit y no paga BEGIN ni COMMIT; lo poco que escribe va con atomic.
+        Args:
+            endpoint (callable): funcion de la ruta
+        Returns:
+            endpoint (callable): la misma funcion, marcada
+    '''
+    endpoint.read_only = True
+    return endpoint
+
+
 def get_conn(request: Request):
     '''
-    Toma una conexion del pool y commitea al terminar si no hubo error.
+    Toma una conexion del pool y commitea al terminar si no hubo error; en una vista de solo lectura va en autocommit.
         Args:
             request (Request): request entrante
         Returns:
@@ -235,7 +252,8 @@ def get_conn(request: Request):
         yield None
         return
 
-    with get_web_pool().connection() as conn:
+    # la ruta ya esta resuelta cuando corren las dependencias
+    with web_connection(autocommit=getattr(request.scope.get('endpoint'), 'read_only', False)) as conn:
         yield conn
 
 
@@ -270,7 +288,7 @@ def home_redirect(request):
 
 def require_user(request: Request, conn=Depends(get_conn)):
     '''
-    Devuelve el User de la sesion o corta el request mandandolo al login.
+    Devuelve el User de la sesion o corta el request mandandolo al login; en la misma consulta trae sus Canales para el resto del request.
         Args:
             request (Request): request entrante
             conn (psycopg.Connection): conexion del request
@@ -278,12 +296,32 @@ def require_user(request: Request, conn=Depends(get_conn)):
             user (dict): fila de users
     '''
     user_id = request.session.get('user_id')
-    user = users.get_user(conn, user_id) if user_id else None
+    user, request.state.canales = canales.get_user_canales(conn, user_id) if user_id else (None, None)
 
     if user is None:
         raise LoginRequired()
 
     return user
+
+
+def get_user_canales(request, conn, user, fresh=False):
+    '''
+    Canales del User como list_canales: los que trajo require_user, o leidos de nuevo despues de escribir.
+        Args:
+            request (Request): request entrante
+            conn (psycopg.Connection): conexion del request
+            user (dict): User de la sesion
+            fresh (bool): True los vuelve a leer, para pintar lo que el request acaba de cambiar
+        Returns:
+            user_canales (list): filas de canales con whitelist_count y uses_seed
+    '''
+    user_canales = getattr(request.state, 'canales', None)
+
+    if user_canales is None or fresh:
+        user_canales = canales.list_canales(conn, user['id'])
+        request.state.canales = user_canales
+
+    return user_canales
 
 
 def get_token(conn, user):
@@ -315,9 +353,9 @@ def get_library(conn, user):
     '''
     def load():
         playlists = spotify.get_my_playlists(get_token(conn, user))
-        copias.save_library(conn, user['id'], playlists)
-        canales.sync_target_names(conn, user['id'], playlists)
-        conn.commit()
+        with atomic(conn):
+            copias.save_library(conn, user['id'], playlists)
+            canales.sync_target_names(conn, user['id'], playlists)
         return playlists
 
     return library_cache.get((user['id'], 'library'), load, ttl=LIBRARY_TTL)
@@ -502,7 +540,7 @@ def shell_context(request, conn, user, **extra):
     '''
     user_canales = extra.pop('user_canales', None)
     if user_canales is None:
-        user_canales = canales.list_canales(conn, user['id'])
+        user_canales = get_user_canales(request, conn, user)
     context = {
         'display_name': request.session.get('display_name') or user['spotify_user_id'],
         'avatar': get_profile_image(request, conn, user),
@@ -548,6 +586,7 @@ def render_view(request, name, context):
 
 
 @app.get('/')
+@read_only
 def home(request: Request, conn=Depends(get_conn)):
     '''
     Muestra el dashboard si hay sesion; si no, la Pantalla de login.
@@ -558,7 +597,7 @@ def home(request: Request, conn=Depends(get_conn)):
             response (TemplateResponse): html de la pagina
     '''
     user_id = request.session.get('user_id')
-    user = users.get_user(conn, user_id) if user_id else None
+    user, request.state.canales = canales.get_user_canales(conn, user_id) if user_id else (None, None)
 
     # un User borrado a mano por Luca deja sesiones colgadas
     if user is None:
@@ -872,18 +911,21 @@ def canal_url(canal_id, open_id=None):
     return url
 
 
-def require_canal(conn, user, canal_id):
+def require_canal(request, conn, user, canal_id, fresh=False):
     '''
-    Devuelve el Canal del User o corta el request si no es suyo o ya no existe.
+    Devuelve el Canal del User, de los que ya trajo require_user, o corta el request si no es suyo o ya no existe.
         Args:
+            request (Request): request entrante
             conn (psycopg.Connection): conexion del request
             user (dict): fila de users
             canal_id (str): id del Canal, tal como viene en el path
+            fresh (bool): True relee los Canales, para pintar lo que el request acaba de cambiar
         Returns:
-            canal (dict): fila de canales
+            canal (dict): fila de canales con whitelist_count y uses_seed
     '''
     # el id viene del path como texto: uno que no es numero es un Canal que no existe
-    canal = canales.get_canal(conn, user['id'], int(canal_id)) if str(canal_id).isdigit() else None
+    canal_id = int(canal_id) if str(canal_id).isdigit() else None
+    canal = next((item for item in get_user_canales(request, conn, user, fresh) if item['id'] == canal_id), None) if canal_id else None
 
     if canal is None:
         raise CanalMissing()
@@ -892,6 +934,7 @@ def require_canal(conn, user, canal_id):
 
 
 @app.get('/canales/nuevo')
+@read_only
 def new_canal(request: Request, user=Depends(require_user), conn=Depends(get_conn)):
     '''
     Vista Nuevo Canal: elegir la Target Playlist, nueva o una propia.
@@ -934,7 +977,7 @@ def create_canal(request: Request, user=Depends(require_user), form=Depends(read
 
     try:
         # chequeo previo al POST a Spotify para no dejar una playlist huerfana si ya tiene 5 Canales
-        if len(canales.list_canales(conn, user['id'])) >= canales.MAX_CANALES:
+        if len(get_user_canales(request, conn, user)) >= canales.MAX_CANALES:
             raise canales.CanalError(f'Ya tenes {canales.MAX_CANALES} Canales, que es el maximo.')
 
         if own:
@@ -964,11 +1007,12 @@ def create_canal(request: Request, user=Depends(require_user), form=Depends(read
 
 
 @app.get('/canales/{canal_id}')
+@read_only
 def show_canal(request: Request, canal_id, user=Depends(require_user), conn=Depends(get_conn)):
     '''Muestra la pagina completa de un Canal.'''
-    canal = require_canal(conn, user, canal_id)
-    copies = load_copies(conn, user, canal)
-    uses_seed = canales.uses_seed(conn, canal['id'])
+    canal = require_canal(request, conn, user, canal_id)
+    copies = load_copies(request, conn, user, canal)
+    uses_seed = canal['uses_seed']
     whitelist = canales.get_whitelist(conn, canal['id'])
     rows = [dict(copy, usable=is_usable(copy, user, canal)) for copy in copies]
     open_id = request.query_params.get('open', '')
@@ -980,22 +1024,24 @@ def show_canal(request: Request, canal_id, user=Depends(require_user), conn=Depe
         uses_seed=uses_seed,
         whitelist=whitelist,
         open_id=opened['playlist_id'] if opened else None,
-        open_artists=visible_artists(conn, user, opened, whitelist) if opened else None,
+        open_artists=visible_artists(conn, user, opened, canal) if opened else None,
     )
     response = render_view(request, 'canal.html', context)
     return response
 
 
 @app.get('/canales/{canal_id}/ajustes')
+@read_only
 def show_settings(request: Request, canal_id, user=Depends(require_user), conn=Depends(get_conn)):
     '''Muestra la pagina completa de la Vista Ajustes.'''
     return render_settings(request, canal_id, user, conn)
 
 
-def load_copies(conn, user, canal):
+def load_copies(request, conn, user, canal):
     '''
     Devuelve la biblioteca guardada; revisa Spotify solo si no hay nada guardado o falta la Target (puede ser recien creada).
         Args:
+            request (Request): request entrante
             conn (psycopg.Connection): conexion del request
             user (dict): User de la sesion
             canal (dict): fila de canales
@@ -1015,6 +1061,8 @@ def load_copies(conn, user, canal):
             raise
         return copies
 
+    # la biblioteca pudo cambiar el nombre y el tamanio de las Targets que pinta la Barra lateral
+    get_user_canales(request, conn, user, fresh=True)
     return copias.list_copies(conn, user['id'])
 
 
@@ -1034,14 +1082,14 @@ def is_usable(copy, user, canal):
     return usable
 
 
-def visible_artists(conn, user, copy, whitelist):
+def visible_artists(conn, user, copy, canal):
     '''
-    Arma los Artistas de la playlist: lo guardado menos lo que ya esta en la Columna derecha.
+    Arma los Artistas de la playlist: lo guardado menos lo que ya esta en la Columna derecha, en una consulta.
         Args:
             conn (psycopg.Connection): conexion del request
             user (dict): User de la sesion
             copy (dict): fila de playlist_copies
-            whitelist (list): Whitelist del Canal
+            canal (dict): Canal de la vista
         Returns:
             artists (list): filas en orden alfabetico, o None si la playlist nunca se leyo
     '''
@@ -1049,9 +1097,8 @@ def visible_artists(conn, user, copy, whitelist):
     if copy['artists_snapshot_id'] is None and copy['partial_total'] is None:
         return None
 
-    chosen = {artist['artist_id'] for artist in whitelist}
-    artists = copias.sorted_artists(copias.get_artists(conn, user['id'], copy['playlist_id']))
-    return copias.add_deezer_ids(conn, [artist for artist in artists if artist['artist_id'] not in chosen])
+    artists = canales.get_unchosen_artists(conn, user['id'], copy['playlist_id'], canal['id'])
+    return artists
 
 
 def canal_context(request, conn, user, canal, copies, **extra):
@@ -1067,7 +1114,7 @@ def canal_context(request, conn, user, canal, copies, **extra):
         Returns:
             context (dict): contexto para el template
     '''
-    user_canales = canales.list_canales(conn, user['id'])
+    user_canales = get_user_canales(request, conn, user)
     canal = next((item for item in user_canales if item['id'] == canal['id']), canal)
     context = shell_context(
         request, conn, user,
@@ -1094,9 +1141,10 @@ def render_settings(request, canal_id, user, conn, partial=False):
         Returns:
             response (TemplateResponse): html de la vista
     '''
-    canal = require_canal(conn, user, canal_id)
+    # tras un Interruptor se relee el Canal: cambiaron su Whitelist y si sigue Seed
+    canal = require_canal(request, conn, user, canal_id, fresh=partial)
     # pinta con lo guardado y una playlist nueva la trae refresh_settings por detras; tras un Interruptor alcanzan las copias
-    copies = copias.list_copies(conn, user['id']) if partial else load_copies(conn, user, canal)
+    copies = copias.list_copies(conn, user['id']) if partial else load_copies(request, conn, user, canal)
     context = canal_context(request, conn, user, canal, copies, section='ajustes', rows=seed_rows(conn, user, canal, copies))
     response = templates.TemplateResponse(request, '_canal_response.html', context) if partial else render_view(request, 'canal.html', context)
     return response
@@ -1144,7 +1192,7 @@ def refresh_settings(request: Request, canal_id, user=Depends(require_user), con
         Returns:
             response (Response): columna para el morph, o 204 sin cuerpo si no cambio nada o Spotify fallo
     '''
-    canal = require_canal(conn, user, canal_id)
+    canal = require_canal(request, conn, user, canal_id)
     before = seed_list_view(copias.list_copies(conn, user['id']), user, canal)
 
     try:
@@ -1190,10 +1238,8 @@ def finish_rules_change(request, conn, user, canal_id):
     '''
     if request.headers.get('HX-Request') != 'true':
         return RedirectResponse(f'/canales/{canal_id}/ajustes', status_code=303)
-    canal = require_canal(conn, user, canal_id)
-    user_canales = canales.list_canales(conn, user['id'])
-    count = next((item['whitelist_count'] for item in user_canales if item['id'] == canal['id']), 0)
-    context = {'canal': canal, 'whitelist_count': count, 'retencion_options': RETENCION_OPTIONS, 'flash': request.session.pop('flash', None)}
+    canal = require_canal(request, conn, user, canal_id, fresh=True)
+    context = {'canal': canal, 'whitelist_count': canal['whitelist_count'], 'retencion_options': RETENCION_OPTIONS, 'flash': request.session.pop('flash', None)}
     return templates.TemplateResponse(request, '_canal_rules_response.html', context)
 
 
@@ -1232,15 +1278,16 @@ def refresh_copy(conn, user, playlist_id):
 
 
 @app.get('/canales/{canal_id}/playlists/{playlist_id}', response_class=HTMLResponse)
+@read_only
 def open_playlist(request: Request, canal_id, playlist_id, user=Depends(require_user), conn=Depends(get_conn)):
     '''Abre una Fila de playlist con su copia guardada al instante; el fragmento dispara el refresco por detras.'''
-    canal = require_canal(conn, user, canal_id)
-    if canales.uses_seed(conn, canal['id']):
+    canal = require_canal(request, conn, user, canal_id)
+    if canal['uses_seed']:
         return action_failed(request, SEED_MESSAGE)
     copy = find_usable_copy(conn, user, canal, playlist_id)
     if copy is None:
         return action_failed(request, 'No encontramos esa playlist entre las que podes usar.')
-    artists = visible_artists(conn, user, copy, canales.get_whitelist(conn, canal['id']))
+    artists = visible_artists(conn, user, copy, canal)
     context = {'canal': canal, 'open_id': playlist_id, 'open_artists': artists, 'oob': True}
     return templates.TemplateResponse(request, '_playlist_open.html', context)
 
@@ -1248,9 +1295,9 @@ def open_playlist(request: Request, canal_id, playlist_id, user=Depends(require_
 @app.get('/canales/{canal_id}/playlists/{playlist_id}/refrescar', response_class=HTMLResponse)
 def refresh_playlist(request: Request, canal_id, playlist_id, user=Depends(require_user), conn=Depends(get_conn)):
     '''Confirma la copia y responde solo con el Indicador de lectura, el Bloque de nuevos y la baja de filas: la lista no se reordena.'''
-    canal = require_canal(conn, user, canal_id)
+    canal = require_canal(request, conn, user, canal_id)
     copy = find_usable_copy(conn, user, canal, playlist_id)
-    if copy is None or canales.uses_seed(conn, canal['id']):
+    if copy is None or canal['uses_seed']:
         return HTMLResponse('')
 
     never_read = copy['artists_snapshot_id'] is None and copy['partial_total'] is None
@@ -1261,20 +1308,18 @@ def refresh_playlist(request: Request, canal_id, playlist_id, user=Depends(requi
     if result['status'] in ('same', 'failed'):
         return templates.TemplateResponse(request, '_playlist_refresh.html', context)
 
-    conn.commit()
-    chosen = {artist['artist_id'] for artist in canales.get_whitelist(conn, canal['id'])}
+    # lo escrito se commitea al final del request: las lecturas de aca abajo ya lo ven
+    chosen = canales.get_whitelist_ids(conn, canal['id'])
     gone = [artist_id for artist_id in result['removed'] if artist_id not in chosen]
     context['gone'] = gone
 
-    # la lista entera solo se pinta en la primera lectura, o para saber si quedo vacia tras una baja
+    # la lista entera solo se pinta en la primera lectura, o para saber si quedo vacia tras una baja; ya trae ids de Deezer y fotos
     if result['first_read'] or gone:
-        context['remaining'] = [artist for artist in copias.sorted_artists(copias.get_artists(conn, user['id'], playlist_id)) if artist['artist_id'] not in chosen]
+        context['remaining'] = canales.get_unchosen_artists(conn, user['id'], playlist_id, canal['id'])
     if not result['first_read']:
         context['nuevos'] = [artist for artist in result['added'] if artist['artist_id'] not in chosen]
-
-    shown = context['remaining'] if result['first_read'] else context['nuevos']
-    if shown:
-        copias.add_deezer_ids(conn, shown)
+    if context['nuevos']:
+        copias.add_deezer_ids(conn, context['nuevos'])
 
     return templates.TemplateResponse(request, '_playlist_refresh.html', context)
 
@@ -1316,14 +1361,18 @@ def artist_moved(request, conn, user, canal, form, artist_id, playlist_id=None, 
     if added and search_image:
         added = dict(added, image=search_image)
 
+    # "Ya estan todos" solo se pregunta si el artista salio de una playlist que se ve
+    counted = playlist_id if listed and added else None
+    whitelist_size, unchosen = canales.count_after_move(conn, canal['id'], user['id'], counted)
+
     context = {
         'canal': canal,
         'artist_id': artist_id,
         'added': added,
-        'whitelist_size': canales.count_whitelist(conn, canal['id']),
+        'whitelist_size': whitelist_size,
         'open_id': playlist_id if listed else None,
         'back': listed if listed and added is None else None,
-        'left_empty': bool(listed and added) and copias.count_unchosen(conn, user['id'], playlist_id, canal['id']) == 0,
+        'left_empty': bool(listed and added) and unchosen == 0,
         'from_search': from_search,
         'search_image': search_image,
     }
@@ -1345,8 +1394,8 @@ def add_artist(request: Request, canal_id, user=Depends(require_user), form=Depe
         Returns:
             response (Response): swaps fuera de banda
     '''
-    canal = require_canal(conn, user, canal_id)
-    if canales.uses_seed(conn, canal['id']):
+    canal = require_canal(request, conn, user, canal_id)
+    if canal['uses_seed']:
         return action_failed(request, SEED_MESSAGE)
 
     artist = copias.get_playlist_artist(conn, user['id'], form['playlist_id'], form['artist_id'])
@@ -1354,7 +1403,6 @@ def add_artist(request: Request, canal_id, user=Depends(require_user), form=Depe
         return action_failed(request, 'Ese artista ya no esta en esa playlist.')
 
     canales.add_manual_artist(conn, canal['id'], form['artist_id'], artist['name'], artist['isrc'])
-    conn.commit()
     return artist_moved(request, conn, user, canal, form, form['artist_id'], playlist_id=form['playlist_id'], listed=artist)
 
 
@@ -1370,12 +1418,11 @@ def remove_artist(request: Request, canal_id, user=Depends(require_user), form=D
         Returns:
             response (Response): swaps fuera de banda
     '''
-    canal = require_canal(conn, user, canal_id)
-    if canales.uses_seed(conn, canal['id']):
+    canal = require_canal(request, conn, user, canal_id)
+    if canal['uses_seed']:
         return action_failed(request, SEED_MESSAGE)
 
     canales.remove_manual_artist(conn, canal['id'], form['artist_id'])
-    conn.commit()
     return artist_moved(request, conn, user, canal, form, form['artist_id'])
 
 
@@ -1391,7 +1438,7 @@ def toggle_seed(request: Request, canal_id, user=Depends(require_user), form=Dep
         Returns:
             response (Response): vuelta a la Vista Ajustes
     '''
-    canal = require_canal(conn, user, canal_id)
+    canal = require_canal(request, conn, user, canal_id)
     playlist_id = form['playlist_id']
 
     if form.get('on') == '1':
@@ -1432,13 +1479,14 @@ def toggle_feats(request: Request, canal_id, user=Depends(require_user), form=De
         Returns:
             response (Response): vuelta a la Vista Ajustes
     '''
-    canal = require_canal(conn, user, canal_id)
+    canal = require_canal(request, conn, user, canal_id)
     canales.set_feats(conn, canal['id'], form['playlist_id'], form.get('on') == '1')
     conn.commit()
     return finish_settings_change(request, conn, user, canal['id'])
 
 
 @app.get('/canales/{canal_id}/buscar', response_class=HTMLResponse)
+@read_only
 def search_artists(request: Request, canal_id, user=Depends(require_user), conn=Depends(get_conn)):
     '''
     Resultados del Buscador de artistas, como fragmento para HTMX.
@@ -1450,14 +1498,14 @@ def search_artists(request: Request, canal_id, user=Depends(require_user), conn=
         Returns:
             response (TemplateResponse): fragmento con los resultados
     '''
-    canal = require_canal(conn, user, canal_id)
+    canal = require_canal(request, conn, user, canal_id)
     query = ' '.join(request.query_params.get('q', '').split())
     results = []
     notice = None
     retry = None
 
     # con una letra Spotify devuelve casi cualquier cosa: no gastamos cuota ni base
-    if len(query) >= SEARCH_MIN_CHARS and not canales.uses_seed(conn, canal['id']):
+    if len(query) >= SEARCH_MIN_CHARS and not canal['uses_seed']:
         text = query.casefold()
         try:
             # el User va primero: el cache se limpia por User y el resultado depende del mercado de su token
@@ -1623,12 +1671,11 @@ def add_manual(request: Request, canal_id, user=Depends(require_user), form=Depe
         Returns:
             response (Response): swaps fuera de banda
     '''
-    canal = require_canal(conn, user, canal_id)
-    if canales.uses_seed(conn, canal['id']):
+    canal = require_canal(request, conn, user, canal_id)
+    if canal['uses_seed']:
         return action_failed(request, SEED_MESSAGE)
 
     canales.add_manual_artist(conn, canal['id'], form['artist_id'], form.get('name', ''))
-    conn.commit()
     return artist_moved(request, conn, user, canal, form, form['artist_id'], from_search=True)
 
 
@@ -1645,7 +1692,7 @@ def set_retencion(request: Request, canal_id, user=Depends(require_user), form=D
         Returns:
             response (Response): cajas de la Vista Ajustes, o redirect a ella sin JS
     '''
-    canal = require_canal(conn, user, canal_id)
+    canal = require_canal(request, conn, user, canal_id)
     value = form.get('retencion')
     retencion_n = int(value) if value in {str(n) for n in RETENCION_OPTIONS} else None
 
@@ -1670,7 +1717,7 @@ def set_guardado(request: Request, canal_id, user=Depends(require_user), form=De
         Returns:
             response (Response): cajas de la Vista Ajustes, o redirect a ella sin JS
     '''
-    canal = require_canal(conn, user, canal_id)
+    canal = require_canal(request, conn, user, canal_id)
     canales.set_guardado(conn, canal['id'], form.get('on') == '1')
     conn.commit()
     return finish_rules_change(request, conn, user, canal['id'])
@@ -1689,7 +1736,7 @@ def unlink_canal(request: Request, canal_id, user=Depends(require_user), form=De
         Returns:
             response (RedirectResponse): redirect a Inicio
     '''
-    canal = require_canal(conn, user, canal_id)
+    canal = require_canal(request, conn, user, canal_id)
     delete_playlist = form.get('borrar_playlist') == '1'
     access_token = get_token(conn, user) if delete_playlist else None
     canales.delete_canal(conn, access_token, canal, delete_playlist)

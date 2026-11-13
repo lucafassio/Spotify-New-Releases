@@ -35,7 +35,32 @@ document.addEventListener('click', function (event) {
     if (notice) notice.innerHTML = '<div class="aviso warn">No pudimos cargar los artistas. Proba de nuevo.</div>';
   });
 }, true);
-// los swaps fuera de banda agregan filas al final y sacan del Bloque: aca se reordena y se recuenta, sin llamar al servidor
+// los swaps fuera de banda agregan filas al final y sacan del Bloque: aca se reordena y se recuenta, sin llamar al servidor.
+// Solo las listas que toco algun swap fuera de banda del request: la navegacion, el Buscador y las fotos no recorren nada.
+const touched = new Set();
+document.addEventListener('htmx:oobBeforeSwap', function (event) {
+  const target = event.detail.target;
+  // un delete saca la fila del documento: su lista y su Bloque se anotan antes
+  const list = target.closest('[data-sorted]');
+  const block = target.closest('[data-bloque]');
+  if (list) touched.add(list);
+  if (block) touched.add(block);
+  // innerHTML y beforeend dejan el target: lo que traiga adentro se mira despues del swap
+  touched.add(target);
+  const fragment = event.detail.fragment;
+  if (fragment && fragment.querySelectorAll) fragment.querySelectorAll('[data-sorted], [data-bloque]').forEach(function (el) { touched.add(el); });
+});
+function sortList(list) {
+  const rows = Array.from(list.children).filter(function (row) { return row.dataset.sort !== undefined; });
+  const sorted = rows.slice().sort(function (a, b) { return a.dataset.sort < b.dataset.sort ? -1 : a.dataset.sort > b.dataset.sort ? 1 : 0; });
+  if (sorted.some(function (row, index) { return row !== rows[index]; })) list.append.apply(list, sorted);
+}
+function countBlock(block) {
+  // las filas que static/flechas.js oculta mientras espera respuesta no cuentan, igual que en su recuento
+  const count = Array.from(block.querySelectorAll('[data-sort]')).filter(function (row) { return row.style.display !== 'none'; }).length;
+  block.hidden = count === 0;
+  block.querySelector('[data-bloque-count]').textContent = count === 1 ? '1 artista nuevo' : count + ' artistas nuevos';
+}
 document.addEventListener('htmx:afterRequest', function (event) {
   // si el refresco mismo fallo (red, app ocupada) nadie toco el Indicador
   const refreshed = event.detail.pathInfo.requestPath.match(/\/playlists\/([^/]+)\/refrescar/);
@@ -43,40 +68,65 @@ document.addEventListener('htmx:afterRequest', function (event) {
   if (reading && reading.textContent === 'Buscando...') reading.textContent = 'Sin actualizar';
   const loading = refreshed && document.querySelector('#artistas-' + refreshed[1] + ' [role="status"]');
   if (loading) loading.textContent = 'No pudimos leer esta playlist. Proba mas tarde.';
-  document.querySelectorAll('[data-sorted]').forEach(function (list) {
-    const rows = Array.from(list.children).filter(function (row) { return row.dataset.sort !== undefined; });
-    const sorted = rows.slice().sort(function (a, b) { return a.dataset.sort < b.dataset.sort ? -1 : a.dataset.sort > b.dataset.sort ? 1 : 0; });
-    if (sorted.some(function (row, index) { return row !== rows[index]; })) list.append.apply(list, sorted);
+  if (!touched.size) return;
+  const lists = new Set();
+  const blocks = new Set();
+  touched.forEach(function (el) {
+    if (!el.isConnected) return;
+    if (el.matches('[data-sorted]')) lists.add(el);
+    if (el.matches('[data-bloque]')) blocks.add(el);
+    el.querySelectorAll('[data-sorted]').forEach(function (list) { lists.add(list); });
+    el.querySelectorAll('[data-bloque]').forEach(function (block) { blocks.add(block); });
   });
-  document.querySelectorAll('[data-bloque]').forEach(function (block) {
-    const count = block.querySelectorAll('[data-sort]').length;
-    block.hidden = count === 0;
-    block.querySelector('[data-bloque-count]').textContent = count === 1 ? '1 artista nuevo' : count + ' artistas nuevos';
-  });
+  touched.clear();
+  lists.forEach(sortList);
+  blocks.forEach(countBlock);
 });
-// rueda con menos deslizamiento que la del navegador: cada panel corre un poco menos y frena enseguida
+// rueda con menos deslizamiento que la del navegador: cada panel corre un poco menos y frena enseguida.
+// El listener va en cada .scroll, no en el documento: fuera de los paneles la rueda queda nativa y sin JS.
 const WHEEL_STEP = 0.7;
 const WHEEL_EASE = 0.35;
 const glides = new WeakMap();
+const wheeled = new WeakSet();
 function glide(box) {
   const state = glides.get(box);
-  const left = state.target - box.scrollTop;
+  const left = state.target - state.pos;
   if (Math.abs(left) < 1) { box.scrollTop = state.target; state.frame = 0; return; }
-  box.scrollTop += left * WHEEL_EASE;
+  // la posicion se lleva aca: escribir sin leer scrollTop no fuerza layout en cada cuadro
+  state.pos += left * WHEEL_EASE;
+  box.scrollTop = state.pos;
   state.frame = requestAnimationFrame(function () { glide(box); });
 }
-document.addEventListener('wheel', function (event) {
-  const box = event.target.closest('.scroll');
-  if (!box || event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY) || box.scrollHeight <= box.clientHeight) return;
+function onWheel(event) {
+  const box = event.currentTarget;
+  // un panel adentro de otro ya la atendio
+  if (event.defaultPrevented || event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+  const state = glides.get(box) || { target: 0, pos: 0, max: 0, frame: 0 };
+  // sin animacion en curso se lee el panel una vez: la barra o un swap pudieron moverlo o cambiar su alto
+  if (!state.frame) {
+    state.max = box.scrollHeight - box.clientHeight;
+    state.pos = state.target = box.scrollTop;
+  }
+  // un panel que no desborda deja la rueda al navegador
+  if (state.max <= 0) return;
   event.preventDefault();
   const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? box.clientHeight : 1;
-  const state = glides.get(box) || { target: 0, frame: 0 };
-  // sin animacion en curso se parte de donde esta: la barra o un swap pudieron moverlo
-  const from = state.frame ? state.target : box.scrollTop;
-  state.target = Math.max(0, Math.min(box.scrollHeight - box.clientHeight, from + event.deltaY * unit * WHEEL_STEP));
+  state.target = Math.max(0, Math.min(state.max, state.target + event.deltaY * unit * WHEEL_STEP));
   glides.set(box, state);
   if (!state.frame) state.frame = requestAnimationFrame(function () { glide(box); });
-}, { passive: false });
+}
+function bindWheel(root) {
+  const boxes = root.querySelectorAll ? Array.from(root.querySelectorAll('.scroll')) : [];
+  if (root.matches && root.matches('.scroll')) boxes.push(root);
+  boxes.forEach(function (box) {
+    if (wheeled.has(box)) return;
+    wheeled.add(box);
+    box.addEventListener('wheel', onWheel, { passive: false });
+  });
+}
+// cada swap (vista, fuera de banda, morph) avisa con htmx:load; el back del historial reemplaza el body entero
+if (window.htmx) htmx.onLoad(bindWheel);
+document.addEventListener('htmx:historyRestore', function () { bindWheel(document); });
 document.addEventListener('htmx:sendError', function () {
   const notice = document.getElementById('action-notice');
   if (notice) notice.innerHTML = '<div class="aviso warn">No pudimos conectar. Proba de nuevo.</div>';

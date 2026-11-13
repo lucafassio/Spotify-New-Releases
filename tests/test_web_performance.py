@@ -1,21 +1,23 @@
 from unittest.mock import MagicMock, Mock
 
 import httpx
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
 from app import canales, copias, web
+from app import db as database
 from app import spotify as spotify_api
+from test_vista_canal import canal, entry, logged, read_once, urls  # noqa: F401
 
 
 @pytest.fixture
 def screen(monkeypatch, spotify):
     user = {'id': 91001, 'spotify_user_id': 'performance', 'disconnected_at': None}
-    canal = {'id': 1, 'user_id': user['id'], 'target_playlist_id': 'p0', 'target_name': 'Playlist 0', 'target_total': 250, 'target_created_by_bot': True, 'retencion_n': 1, 'guardado_filter': True, 'whitelist_count': 0}
+    row = {'id': 1, 'user_id': user['id'], 'target_playlist_id': 'p0', 'target_name': 'Playlist 0', 'target_total': 250, 'target_created_by_bot': True, 'retencion_n': 1, 'guardado_filter': True, 'whitelist_count': 0, 'uses_seed': False}
     library = [{'id': f'p{i}', 'name': f'Playlist {i}', 'owner': {'id': user['spotify_user_id']}, 'items': {'total': 250}, 'snapshot_id': 'v1'} for i in range(100)]
-    conn = Mock()
-    monkeypatch.setattr(canales, 'get_canal', lambda *args: canal.copy())
-    monkeypatch.setattr(canales, 'list_canales', lambda *args: [canal.copy()])
+    conn = Mock(autocommit=False)
+    monkeypatch.setattr(canales, 'list_canales', lambda *args: [row.copy()])
     monkeypatch.setattr(canales, 'get_sources', lambda *args: [])
     monkeypatch.setattr(canales, 'get_whitelist', lambda *args: [])
     copies = []
@@ -41,7 +43,7 @@ def screen(monkeypatch, spotify):
 
     try:
         with TestClient(web.app) as client:
-            yield {'client': client, 'conn': conn, 'library': library, 'route': route, 'user': user, 'canal': canal}
+            yield {'client': client, 'conn': conn, 'library': library, 'route': route, 'user': user, 'canal': row}
     finally:
         web.app.dependency_overrides.clear()
 
@@ -159,3 +161,114 @@ def test_run_started_from_web_leaves_interactive_policy(monkeypatch):
         web.run_in_background(1)
         assert spotify_api.request_deadline.get() == deadline
     assert deadlines == [None]
+
+
+# Idas y vueltas a la base por pantalla (#29)
+
+
+@pytest.fixture
+def round_trips(monkeypatch):
+    '''
+    Cuenta lo que cada request le manda a Postgres: consultas del cursor y comandos sueltos (BEGIN, COMMIT, ROLLBACK).
+        Returns:
+            sent (list): una entrada por ida y vuelta, con la consulta o el comando
+    '''
+    sent = []
+    execute, executemany, command = psycopg.Cursor.execute, psycopg.Cursor.executemany, psycopg.Connection._exec_command
+
+    def count_execute(self, query, *args, **kwargs):
+        sent.append(str(query)[:80])
+        return execute(self, query, *args, **kwargs)
+
+    def count_executemany(self, query, *args, **kwargs):
+        sent.append(str(query)[:80])
+        return executemany(self, query, *args, **kwargs)
+
+    def count_command(self, text, *args, **kwargs):
+        sent.append(bytes(text).decode() if isinstance(text, (bytes, bytearray, memoryview)) else str(text))
+        return command(self, text, *args, **kwargs)
+
+    monkeypatch.setattr(psycopg.Cursor, 'execute', count_execute)
+    monkeypatch.setattr(psycopg.Cursor, 'executemany', count_executemany)
+    monkeypatch.setattr(psycopg.Connection, '_exec_command', count_command)
+    return sent
+
+
+def measure(sent, call, overhead=False):
+    '''
+    Corre un request y devuelve lo que le mando a la base.
+        Args:
+            sent (list): lista del fixture round_trips
+            call (callable): hace el request
+            overhead (bool): True cuenta tambien BEGIN y COMMIT
+        Returns:
+            texts (list): consultas, y comandos si overhead
+    '''
+    sent.clear()
+    response = call()
+    assert response.status_code == 200
+    return list(sent) if overhead else [text for text in sent if text not in ('BEGIN', 'COMMIT')]
+
+
+# topes de consultas por pantalla, sin BEGIN ni COMMIT; antes de #29 eran 2, 6, 8, 7, 5, 5, 12 y 9
+SCREEN_QUERIES = {
+    'inicio': 1,
+    'canal': 3,
+    'canal_open': 4,
+    'fila': 3,
+    'refresco_igual': 3,
+    'ajustes': 3,
+    'sumar': 5,
+    'quitar': 5,
+}
+
+
+def test_screens_keep_their_round_trips(canal, round_trips, spotify):  # noqa: F811
+    read_once(canal, spotify, [entry('t1', 'Duki'), entry('t2', 'Mora')])
+    client, base = canal['client'], f'/canales/{canal["canal_id"]}'
+    fila, refresco = urls(canal)
+    hx = {'HX-Request': 'true'}
+    screens = {
+        'inicio': lambda: client.get('/'),
+        'canal': lambda: client.get(base),
+        'canal_open': lambda: client.get(base, params={'open': canal['pid']}),
+        'fila': lambda: client.get(fila, headers=hx),
+        'refresco_igual': lambda: client.get(refresco, headers=hx),
+        'ajustes': lambda: client.get(f'{base}/ajustes'),
+        'sumar': lambda: client.post(f'{base}/artistas/sumar', data={'playlist_id': canal['pid'], 'artist_id': 'duki'}, headers=hx),
+        'quitar': lambda: client.post(f'{base}/artistas/quitar', data={'artist_id': 'duki', 'open': canal['pid']}, headers=hx),
+    }
+
+    counts = {name: measure(round_trips, call) for name, call in screens.items()}
+
+    assert {name: len(queries) for name, queries in counts.items()} == SCREEN_QUERIES, counts
+
+
+def test_read_only_screens_skip_the_transaction_with_the_real_pool(canal, db, round_trips, spotify, db_schema, monkeypatch):  # noqa: F811
+    read_once(canal, spotify, [entry('t1', 'Duki'), entry('t2', 'Mora')])
+    # get_conn commitea al final de cada request; la conexion del test que lo reemplaza no
+    db.commit()
+    client, base = canal['client'], f'/canales/{canal["canal_id"]}'
+    fila = urls(canal)[0]
+    hx = {'HX-Request': 'true'}
+    # el pool de verdad ve lo commiteado desde el schema efimero
+    web.app.dependency_overrides.pop(web.get_conn)
+    monkeypatch.setattr(database, 'WEB_OPTIONS', f'{database.WEB_OPTIONS} -c search_path={db_schema}')
+    database.close_web_pool()
+
+    try:
+        client.get(base)
+        screens = {
+            'canal': lambda: client.get(base),
+            'canal_open': lambda: client.get(base, params={'open': canal['pid']}),
+            'fila': lambda: client.get(fila, headers=hx),
+            'sumar': lambda: client.post(f'{base}/artistas/sumar', data={'playlist_id': canal['pid'], 'artist_id': 'duki'}, headers=hx),
+        }
+        sent = {name: measure(round_trips, call, overhead=True) for name, call in screens.items()}
+    finally:
+        database.close_web_pool()
+
+    # con la conexion recien usada no hay chequeo del pool, y una vista que solo lee no paga BEGIN ni COMMIT
+    assert {name: len(texts) for name, texts in sent.items()} == {'canal': 3, 'canal_open': 4, 'fila': 3, 'sumar': 7}, sent
+    assert [sent['sumar'].count('BEGIN'), sent['sumar'].count('COMMIT')] == [1, 1]
+    assert not any(text in ('BEGIN', 'COMMIT', '') for name in ('canal', 'canal_open', 'fila') for text in sent[name])

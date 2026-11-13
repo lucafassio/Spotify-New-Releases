@@ -11,7 +11,11 @@
   <meta name="apple-mobile-web-app-title" content="Radar">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Figtree:wght@400..700&display=swap" rel="stylesheet">
+  <!-- fuentes sin frenar el primer pintado: se bajan con prioridad alta, pintan con la del sistema y cambian al llegar (display=swap) -->
+  {% set fonts_url = 'https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Figtree:wght@400..700&display=swap' %}
+  <link rel="preload" as="style" href="{{ fonts_url }}">
+  <link rel="stylesheet" href="{{ fonts_url }}" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="{{ fonts_url }}"></noscript>
   <link rel="stylesheet" href="{{ static_url('app.css') }}">
   <!-- defer: htmx y las extensiones no frenan el primer pintado y corren en orden antes de DOMContentLoaded -->
   <script src="{{ static_url('htmx-2.0.4.min.js') }}" defer></script>
