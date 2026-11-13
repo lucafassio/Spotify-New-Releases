@@ -352,6 +352,27 @@ def remove_manual_artist(conn, canal_id, artist_id):
     )
 
 
+def clear_manual_artists(conn, canal_id):
+    '''
+    Vacia la lista manual del Canal; en una sola sentencia, como recalc_whitelist: vacia la Whitelist si el Canal no sigue Seed Playlists.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            canal_id (int): id del Canal
+    '''
+    conn.execute(
+        '''
+        WITH unlisted AS (
+            DELETE FROM source_artists
+            WHERE artist_source_id IN (SELECT id FROM artist_sources WHERE canal_id = %(canal_id)s AND type = 'manual')
+        )
+        DELETE FROM whitelist_artists
+        WHERE canal_id = %(canal_id)s
+            AND NOT EXISTS (SELECT 1 FROM artist_sources WHERE canal_id = %(canal_id)s AND type = 'seed_playlist')
+        ''',
+        {'canal_id': canal_id},
+    )
+
+
 def recalc_whitelist(conn, canal_id):
     '''
     Deja la Whitelist igual a lo que aporta la forma que usa el Canal: sus Seed Playlists si tiene alguna, si no su Lista manual (ADR 0008).

@@ -167,6 +167,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Artistas de la playlist | Filas de artista en orden alfabetico, invitados incluidos, sin los que ya estan en la Columna derecha. Si no queda ninguno: "Ya estan todos". Si nunca se pudo leer: "No pudimos leer esta playlist. Proba mas tarde." |
 | Bloque de nuevos | Al fondo de la fila abierta, apartado: "2 artistas nuevos" y sus Filas de artista en orden alfabetico. Dura hasta plegar la playlist; al volver a abrirla se mezclan con el resto |
 | Columna derecha | "Quienes entran": la Whitelist del Canal en Filas de artista, en orden alfabetico. Vacia: "Elegi artistas desde una playlist o buscalos." |
+| Boton Clear all | En el encabezado de la Columna derecha, a la izquierda del contador, en rojo: vacia la Lista manual del Canal previa confirmacion. No aparece si el Canal usa Seed Playlists ni con la Whitelist vacia |
 | Buscador de artistas | Arriba de la Columna derecha; suma a la Lista manual. No aparece si el Canal usa Seed Playlists. Busca desde 2 letras, 200 ms despues de dejar de tipear; al vaciarlo se limpian los resultados |
 | Aviso de busqueda | Aviso warn en lugar de los resultados del Buscador si Spotify pidio una pausa o se quedo sin cuota; el resto de la vista sigue igual |
 | Resultado agregado | Resultado del Buscador de un artista que ya esta en el Canal: apagado, sin boton y con la etiqueta "added" |

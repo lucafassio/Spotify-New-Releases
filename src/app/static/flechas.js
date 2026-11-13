@@ -175,6 +175,8 @@
     if (contador) contador.textContent = texto;
     const fila = document.querySelector('.nav-row[href="/canales/' + panel.dataset.canalId + '"] small');
     if (fila) fila.textContent = texto;
+    const vaciar = document.getElementById('wl-vaciar');
+    if (vaciar) vaciar.hidden = !total;
 
     const vacio = document.getElementById('wl-vacio');
     if (total && vacio) vacio.remove();

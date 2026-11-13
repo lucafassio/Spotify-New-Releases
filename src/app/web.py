@@ -1426,6 +1426,26 @@ def remove_artist(request: Request, canal_id, user=Depends(require_user), form=D
     return artist_moved(request, conn, user, canal, form, form['artist_id'])
 
 
+@app.post('/canales/{canal_id}/artistas/vaciar')
+def clear_artists(request: Request, canal_id, user=Depends(require_user), form=Depends(read_form), conn=Depends(get_conn)):
+    '''
+    Boton Clear all de la Columna derecha: vacia la Lista manual del Canal.
+        Args:
+            canal_id (str): id del Canal, tal como viene en el path
+            user (dict): User de la sesion
+            form (dict): open opcional
+            conn (psycopg.Connection): conexion del request
+        Returns:
+            response (Response): vuelta al Canal, con la playlist abierta si habia una
+    '''
+    canal = require_canal(request, conn, user, canal_id)
+    if canal['uses_seed']:
+        return action_failed(request, SEED_MESSAGE)
+
+    canales.clear_manual_artists(conn, canal['id'])
+    return RedirectResponse(canal_url(canal['id'], form.get('open') or None), status_code=303)
+
+
 @app.post('/canales/{canal_id}/seeds')
 def toggle_seed(request: Request, canal_id, user=Depends(require_user), form=Depends(read_form), conn=Depends(get_conn)):
     '''

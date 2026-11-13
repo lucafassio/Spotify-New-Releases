@@ -138,6 +138,7 @@ input:focus { border-color: var(--texto-2); outline: none; }
 .cols { display: grid; gap: 8px; padding: 8px; min-height: 0; grid-row: 3; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .col { background: var(--negro); border-radius: var(--r-m); min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
 .col > header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 14px 16px 10px; }
+.col-acc { display: flex; align-items: baseline; gap: 6px; }
 .col > header h2 { font-size: 20px; font-weight: 800; font-stretch: 85%; }
 .col-body { padding: 0 8px 14px 16px; display: flex; flex-direction: column; gap: 14px; }
 .box { background: var(--superficie); border-radius: var(--r-m); padding: 14px; display: flex; flex-direction: column; gap: 10px; }

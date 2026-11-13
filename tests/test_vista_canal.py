@@ -225,6 +225,38 @@ def test_arrows_without_js_redirect_to_the_canal(canal, db, spotify):
     assert [row['name'] for row in canales.get_whitelist(db, canal['canal_id'])] == ['Bad Bunny']
 
 
+def test_clear_all_empties_the_lista_manual(canal, db, spotify):
+    read_once(canal, spotify, [entry('t1', 'Duki')])
+    base = f'/canales/{canal["canal_id"]}'
+    canales.add_manual_artist(db, canal['canal_id'], 'duki', 'Duki')
+    canales.add_manual_artist(db, canal['canal_id'], 'mora', 'Mora')
+    db.commit()
+
+    page = canal['client'].get(base).text
+    cleared = canal['client'].post(f'{base}/artistas/vaciar', data={'open': canal['pid']}, follow_redirects=False)
+    after = canal['client'].get(base).text
+
+    assert f'action="{base}/artistas/vaciar" hx-confirm=' in page
+    assert cleared.status_code == 303
+    assert cleared.headers['location'] == f'{base}?open={canal["pid"]}'
+    assert canales.get_whitelist(db, canal['canal_id']) == []
+    assert db.execute('SELECT count(*) FROM source_artists sa JOIN artist_sources s ON s.id = sa.artist_source_id WHERE s.canal_id = %s', (canal['canal_id'],)).fetchone()[0] == 0
+    # sin artistas el boton queda oculto
+    assert 'hx-confirm="Sacar a todos los artistas de este Canal?" hidden' in after
+
+
+def test_clear_all_is_rejected_with_seed(canal, db, spotify):
+    seed_on(canal, spotify, [entry('t1', 'Duki', 'YSY')])
+    base = f'/canales/{canal["canal_id"]}'
+
+    text = canal['client'].get(base).text
+    cleared = canal['client'].post(f'{base}/artistas/vaciar', headers={'HX-Request': 'true'})
+
+    assert 'artistas/vaciar' not in text
+    assert cleared.headers['HX-Retarget'] == '#action-notice'
+    assert [row['name'] for row in canales.get_whitelist(db, canal['canal_id'])] == ['Duki']
+
+
 def test_flechas_script_is_served(canal):
     response = canal['client'].get('/static/flechas.js')
 
