@@ -1,6 +1,6 @@
 from psycopg.rows import dict_row
 
-from app import copias, spotify
+from app import copias, spotify, users
 
 # la quota de la Shared App la comparten todos los Users (ADR 0005)
 MAX_CANALES = 5
@@ -12,6 +12,14 @@ TARGET_IMAGE = '''
     (SELECT pc.image_url FROM playlist_copies pc WHERE pc.user_id = canales.user_id AND pc.playlist_id = canales.target_playlist_id) AS target_image
 '''
 
+# lo que muestra la Barra lateral de cada Canal, y si sigue Seed Playlists (ADR 0008)
+CANAL_LIST = f'''
+    {CANAL_COLUMNS}, {TARGET_IMAGE},
+    (SELECT count(*) FROM whitelist_artists w WHERE w.canal_id = canales.id) AS whitelist_count,
+    EXISTS (SELECT 1 FROM artist_sources s WHERE s.canal_id = canales.id AND s.type = 'seed_playlist') AS uses_seed
+'''
+CANAL_LIST_FIELDS = [*CANAL_COLUMNS.split(', '), 'target_image', 'whitelist_count', 'uses_seed']
+
 
 class CanalError(Exception):
     pass
@@ -19,21 +27,44 @@ class CanalError(Exception):
 
 def list_canales(conn, user_id):
     '''
-    Lista los Canales del User con el tamanio de su Whitelist, en orden de creacion.
+    Lista los Canales del User con el tamanio de su Whitelist y si siguen Seed Playlists, en orden de creacion.
         Args:
             conn (psycopg.Connection): conexion abierta
             user_id (int): id interno del User
         Returns:
-            canales (list): filas de canales con target_image y whitelist_count
+            canales (list): filas de canales con target_image, whitelist_count y uses_seed
     '''
-    canales = conn.cursor(row_factory=dict_row).execute(
+    canales = conn.cursor(row_factory=dict_row).execute(f'SELECT {CANAL_LIST} FROM canales WHERE user_id = %s ORDER BY created_at, id', (user_id,)).fetchall()
+    return canales
+
+
+def get_user_canales(conn, user_id):
+    '''
+    Trae en una sola consulta el User y sus Canales como los da list_canales: casi toda vista de la web necesita los dos.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            user_id (int): id interno del User
+        Returns:
+            user (dict): fila de users como users.get_user, o None si no existe
+            canales (list): filas como list_canales, vacia si no existe el User
+    '''
+    user_columns = ', '.join(f'u.{column}' for column in users.USER_COLUMNS.split(', '))
+    canal_columns = ', '.join(f'c.{field} AS canal_{field}' for field in CANAL_LIST_FIELDS)
+    rows = conn.cursor(row_factory=dict_row).execute(
         f'''
-        SELECT {CANAL_COLUMNS}, {TARGET_IMAGE}, (SELECT count(*) FROM whitelist_artists w WHERE w.canal_id = canales.id) AS whitelist_count
-        FROM canales WHERE user_id = %s ORDER BY created_at, id
+        SELECT {user_columns}, {canal_columns}
+        FROM users u LEFT JOIN LATERAL (SELECT {CANAL_LIST} FROM canales WHERE canales.user_id = u.id) c ON true
+        WHERE u.id = %s ORDER BY c.created_at, c.id
         ''',
         (user_id,),
     ).fetchall()
-    return canales
+
+    if not rows:
+        return None, []
+
+    user = {key: value for key, value in rows[0].items() if not key.startswith('canal_')}
+    user_canales = [{field: row[f'canal_{field}'] for field in CANAL_LIST_FIELDS} for row in rows if row['canal_id'] is not None]
+    return user, user_canales
 
 
 def get_canal(conn, user_id, canal_id):
@@ -264,13 +295,13 @@ def uses_seed(conn, canal_id):
         Returns:
             seed (bool): True si tiene al menos una Seed Playlist
     '''
-    seed = any(source['type'] == 'seed_playlist' for source in get_sources(conn, canal_id))
+    seed = conn.execute("SELECT EXISTS (SELECT 1 FROM artist_sources WHERE canal_id = %s AND type = 'seed_playlist')", (canal_id,)).fetchone()[0]
     return seed
 
 
 def add_manual_artist(conn, canal_id, artist_id, name, isrc=None):
     '''
-    Suma un artista a la lista manual del Canal, creando la lista si no existe.
+    Suma un artista a la lista manual del Canal, creando la lista si no existe; en una sola sentencia, como recalc_whitelist: entra a la Whitelist si el Canal no sigue Seed Playlists.
         Args:
             conn (psycopg.Connection): conexion abierta
             canal_id (int): id del Canal
@@ -278,31 +309,47 @@ def add_manual_artist(conn, canal_id, artist_id, name, isrc=None):
             name (str): nombre del artista
             isrc (str): un Track donde figura, para vincularlo con Deezer (ADR 0007); lo buscado a mano no lo tiene
     '''
-    source_id = find_source(conn, canal_id, 'manual')
-
-    if source_id is None:
-        source_id = conn.execute("INSERT INTO artist_sources (canal_id, type) VALUES (%s, 'manual') RETURNING id", (canal_id,)).fetchone()[0]
-
+    # los CTE ven la base de antes de la sentencia: la lista recien creada sale de created y la que ya estaba del SELECT
     conn.execute(
-        'INSERT INTO source_artists (artist_source_id, artist_id, name, isrc) VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING',
-        (source_id, artist_id, name, isrc),
+        '''
+        WITH created AS (
+            INSERT INTO artist_sources (canal_id, type) VALUES (%(canal_id)s, 'manual')
+            ON CONFLICT (canal_id, type, (coalesce(playlist_id, ''))) DO NOTHING RETURNING id
+        ), source AS (
+            SELECT id FROM created UNION ALL SELECT id FROM artist_sources WHERE canal_id = %(canal_id)s AND type = 'manual'
+        ), listed AS (
+            INSERT INTO source_artists (artist_source_id, artist_id, name, isrc)
+            SELECT id, %(artist_id)s::text, %(name)s::text, %(isrc)s::text FROM source ON CONFLICT DO NOTHING
+        )
+        INSERT INTO whitelist_artists (canal_id, artist_id)
+        SELECT %(canal_id)s, %(artist_id)s::text
+        WHERE NOT EXISTS (SELECT 1 FROM artist_sources WHERE canal_id = %(canal_id)s AND type = 'seed_playlist')
+        ON CONFLICT DO NOTHING
+        ''',
+        {'canal_id': canal_id, 'artist_id': artist_id, 'name': name, 'isrc': isrc},
     )
-    recalc_whitelist(conn, canal_id)
 
 
 def remove_manual_artist(conn, canal_id, artist_id):
     '''
-    Saca un artista de la lista manual del Canal.
+    Saca un artista de la lista manual del Canal; en una sola sentencia, como recalc_whitelist: deja la Whitelist si el Canal no sigue Seed Playlists.
         Args:
             conn (psycopg.Connection): conexion abierta
             canal_id (int): id del Canal
             artist_id (str): id de Spotify del artista
     '''
     conn.execute(
-        "DELETE FROM source_artists WHERE artist_id = %s AND artist_source_id IN (SELECT id FROM artist_sources WHERE canal_id = %s AND type = 'manual')",
-        (artist_id, canal_id),
+        '''
+        WITH unlisted AS (
+            DELETE FROM source_artists
+            WHERE artist_id = %(artist_id)s AND artist_source_id IN (SELECT id FROM artist_sources WHERE canal_id = %(canal_id)s AND type = 'manual')
+        )
+        DELETE FROM whitelist_artists
+        WHERE canal_id = %(canal_id)s AND artist_id = %(artist_id)s
+            AND NOT EXISTS (SELECT 1 FROM artist_sources WHERE canal_id = %(canal_id)s AND type = 'seed_playlist')
+        ''',
+        {'canal_id': canal_id, 'artist_id': artist_id},
     )
-    recalc_whitelist(conn, canal_id)
 
 
 def recalc_whitelist(conn, canal_id):
@@ -403,6 +450,56 @@ def count_whitelist(conn, canal_id):
     '''
     count = conn.execute('SELECT count(*) FROM whitelist_artists WHERE canal_id = %s', (canal_id,)).fetchone()[0]
     return count
+
+
+def get_unchosen_artists(conn, user_id, playlist_id, canal_id):
+    '''
+    Artistas guardados de una playlist que todavia no entran en la Whitelist del Canal, con su id de Deezer y su foto: la Columna izquierda en una consulta.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            user_id (int): id interno del User
+            playlist_id (str): id de Spotify de la playlist
+            canal_id (int): id del Canal
+        Returns:
+            artists (list): dicts con artist_id, name, feat, isrc, deezer_artist_id, photo_url y photo_known, en orden alfabetico
+    '''
+    artists = conn.cursor(row_factory=dict_row).execute(
+        f'''
+        SELECT a.artist_id, a.name, a.feat, a.isrc, d.deezer_artist_id, {copias.PHOTO_COLUMNS}
+        FROM playlist_copy_artists a
+        LEFT JOIN deezer_artists d ON d.spotify_artist_id = a.artist_id
+        LEFT JOIN artist_photos p ON p.spotify_artist_id = a.artist_id
+        WHERE a.user_id = %s AND a.playlist_id = %s
+            AND NOT EXISTS (SELECT 1 FROM whitelist_artists w WHERE w.canal_id = %s AND w.artist_id = a.artist_id)
+        ''',
+        (user_id, playlist_id, canal_id),
+    ).fetchall()
+    artists.sort(key=lambda row: copias.artist_sort_key(row['name']))
+    return artists
+
+
+def count_after_move(conn, canal_id, user_id=None, playlist_id=None):
+    '''
+    Los dos contadores que repinta una Flecha de artista, en una consulta: el de la Whitelist y los que quedan por elegir en la playlist.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            canal_id (int): id del Canal
+            user_id (int): id interno del User, para contar la playlist
+            playlist_id (str): id de Spotify de la playlist, o None si no hay una abierta
+        Returns:
+            whitelist_size (int): artistas que entran
+            unchosen (int): artistas de la playlist que no entran, 0 sin playlist
+    '''
+    whitelist_size, unchosen = conn.execute(
+        '''
+        SELECT (SELECT count(*) FROM whitelist_artists WHERE canal_id = %(canal_id)s),
+            (SELECT count(*) FROM playlist_copy_artists a
+             WHERE a.user_id = %(user_id)s AND a.playlist_id = %(playlist_id)s
+                AND NOT EXISTS (SELECT 1 FROM whitelist_artists w WHERE w.canal_id = %(canal_id)s AND w.artist_id = a.artist_id))
+        ''',
+        {'canal_id': canal_id, 'user_id': user_id, 'playlist_id': playlist_id},
+    ).fetchone()
+    return whitelist_size, unchosen
 
 
 def refresh_sources(conn, access_token, canal, library):

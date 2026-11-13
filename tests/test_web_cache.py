@@ -78,7 +78,7 @@ def test_library_lasts_five_minutes_and_a_hit_does_not_touch_the_db(monkeypatch)
     monkeypatch.setattr(web.canales, 'sync_target_names', Mock())
     monkeypatch.setattr(web, 'get_token', lambda *args: 'token')
     monkeypatch.setattr(web, 'library_cache', WebCache())
-    user, conn = {'id': 7}, Mock()
+    user, conn = {'id': 7}, Mock(autocommit=False)
 
     web.sync_library(conn, user)
     now[0] += 4 * 60
