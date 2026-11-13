@@ -189,7 +189,7 @@ def test_moves_read_only_the_moved_artist_and_the_count(canal, db, spotify, monk
     assert '2 artistas' in searched.text
     assert 'id="wl-mora" hx-swap-oob="delete"' in removed.text
     assert f'id="art-{canal["pid"]}-mora"' in removed.text
-    assert 'https://api.deezer.com/artist/31/image' in removed.text
+    assert 'data-foto="mora"' in removed.text
     assert '1 artistas' in removed.text
 
 
