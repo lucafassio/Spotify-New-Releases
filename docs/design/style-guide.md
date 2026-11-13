@@ -165,7 +165,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 
 | Nombre | Que es |
 | --- | --- |
-| Seed Playlists | Las playlists usables del User con un Interruptor de playlist cada una. Con una prendida el Canal usa Seed; con ninguna, su Lista manual |
+| Seed Playlists | Las playlists usables del User con un Interruptor de playlist cada una. Con una prendida el Canal usa Seed; con ninguna, su Lista manual. Se pinta con la biblioteca guardada y se pone al dia sola por detras, sin perder el scroll, solo si aparecio, se fue o cambio una playlist; si Spotify falla queda como estaba |
 | Interruptor de playlist | Prende o apaga la playlist como Seed Playlist de este Canal |
 | Interruptor Feats | Junto a cada Seed Playlist prendida: sumar tambien a sus invitados |
 | Columna de reglas | Columna derecha de la Vista Ajustes: Caja Playlist, Editor de Retencion, Interruptor Guardado y Resumen de Canal |

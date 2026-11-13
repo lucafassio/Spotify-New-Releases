@@ -79,6 +79,18 @@ def test_create_canal_with_own_playlist(logged, db, spotify):
     assert canal['target_created_by_bot'] is False
 
 
+def test_create_canal_with_own_playlist_reuses_the_cached_library(logged, db, spotify):
+    route = mock_library(spotify, logged['spotify_user_id'])
+    client = logged['client']
+
+    client.get('/canales/nuevo?tipo=mia')
+    response = client.post('/canales', data={'tipo': 'mia', 'playlist_id': 'mia'})
+
+    assert 'Columna izquierda' in response.text
+    assert route.call_count == 1
+    assert canales.list_canales(db, logged['user_id'])[0]['target_playlist_id'] == 'mia'
+
+
 def test_cannot_target_a_playlist_of_someone_else(logged, db, spotify):
     mock_library(spotify, logged['spotify_user_id'])
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode
 
 import httpx
-from fastapi import BackgroundTasks, Depends, FastAPI, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Request, Response
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -790,15 +790,16 @@ def create_canal(request: Request, user=Depends(require_user), form=Depends(read
         Returns:
             response (RedirectResponse): redirect a la vista del Canal nuevo
     '''
-    access_token = get_token(conn, user)
+    own = form.get('tipo') == 'mia'
 
     try:
         # chequeo previo al POST a Spotify para no dejar una playlist huerfana si ya tiene 5 Canales
         if len(canales.list_canales(conn, user['id'])) >= canales.MAX_CANALES:
             raise canales.CanalError(f'Ya tenes {canales.MAX_CANALES} Canales, que es el maximo.')
 
-        if form.get('tipo') == 'mia':
-            playlists = spotify.get_my_playlists(access_token)
+        if own:
+            # la misma biblioteca que acaba de listar la Vista Nuevo Canal, con su minuto de cache
+            playlists = get_library(conn, user)
             playlist = next((p for p in playlists if p['id'] == form.get('playlist_id') and p['owner']['id'] == user['spotify_user_id']), None)
             if playlist is None:
                 raise canales.CanalError('No encontramos esa playlist entre las tuyas.')
@@ -807,15 +808,17 @@ def create_canal(request: Request, user=Depends(require_user), form=Depends(read
             name = form.get('name', '')[:100]
             if not name:
                 raise canales.CanalError('Ponele un nombre a la playlist.')
-            playlist = spotify.create_playlist(access_token, name)
+            playlist = spotify.create_playlist(get_token(conn, user), name)
             canal_id = canales.create_canal(conn, user['id'], playlist['id'], playlist['name'], True)
     except canales.CanalError as error:
         request.session['canal_error'] = str(error)
-        kind = 'mia' if form.get('tipo') == 'mia' else 'nueva'
+        kind = 'mia' if own else 'nueva'
         return RedirectResponse(f'/canales/nuevo?tipo={kind}', status_code=303)
 
     conn.commit()
-    library_cache.clear(user['id'])
+    # solo una playlist recien creada cambia la biblioteca en Spotify
+    if not own:
+        library_cache.clear(user['id'])
     response = RedirectResponse(canal_url(canal_id), status_code=303)
     return response
 
@@ -849,20 +852,19 @@ def show_settings(request: Request, canal_id, user=Depends(require_user), conn=D
     return render_settings(request, canal_id, user, conn)
 
 
-def load_copies(conn, user, canal, fresh=False):
+def load_copies(conn, user, canal):
     '''
-    Devuelve la biblioteca guardada; revisa Spotify solo si no hay nada guardado, falta la Target (puede ser recien creada) o se pide.
+    Devuelve la biblioteca guardada; revisa Spotify solo si no hay nada guardado o falta la Target (puede ser recien creada).
         Args:
             conn (psycopg.Connection): conexion del request
             user (dict): User de la sesion
             canal (dict): fila de canales
-            fresh (bool): True revisa igual, con el minuto de cache
         Returns:
             copies (list): filas de playlist_copies
     '''
     copies = copias.list_copies(conn, user['id'])
 
-    if not fresh and any(copy['playlist_id'] == canal['target_playlist_id'] for copy in copies):
+    if any(copy['playlist_id'] == canal['target_playlist_id'] for copy in copies):
         return copies
 
     try:
@@ -952,13 +954,70 @@ def render_settings(request, canal_id, user, conn, partial=False):
             response (TemplateResponse): html de la vista
     '''
     canal = require_canal(conn, user, canal_id)
-    # un Canal con Seed no tiene filas que abrir: sin esto una playlist nueva recien se podria prender despues del Run
-    copies = load_copies(conn, user, canal, fresh=not partial)
-    seeds = {source['playlist_id']: source for source in canales.get_sources(conn, canal['id']) if source['type'] == 'seed_playlist'}
-    rows = [dict(copy, source=seeds.get(copy['playlist_id'])) for copy in copies if is_usable(copy, user, canal)]
-    context = canal_context(request, conn, user, canal, copies, section='ajustes', rows=rows)
+    # pinta con lo guardado y una playlist nueva la trae refresh_settings por detras; tras un Interruptor alcanzan las copias
+    copies = copias.list_copies(conn, user['id']) if partial else load_copies(conn, user, canal)
+    context = canal_context(request, conn, user, canal, copies, section='ajustes', rows=seed_rows(conn, user, canal, copies))
     response = templates.TemplateResponse(request, '_canal_response.html' if partial else 'canal.html', context)
     return response
+
+
+def seed_rows(conn, user, canal, copies):
+    '''
+    Arma las filas de la Columna de Seed Playlists: las playlists usables, con su Seed si esta prendida.
+        Args:
+            conn (psycopg.Connection): conexion del request
+            user (dict): User de la sesion
+            canal (dict): fila de canales
+            copies (list): biblioteca guardada
+        Returns:
+            rows (list): copias usables con la clave source
+    '''
+    seeds = {source['playlist_id']: source for source in canales.get_sources(conn, canal['id']) if source['type'] == 'seed_playlist'}
+    rows = [dict(copy, source=seeds.get(copy['playlist_id'])) for copy in copies if is_usable(copy, user, canal)]
+    return rows
+
+
+def seed_list_view(copies, user, canal):
+    '''
+    Resume lo que la Columna de Seed Playlists muestra de cada playlist, para saber si hay que repintarla.
+        Args:
+            copies (list): biblioteca guardada
+            user (dict): User de la sesion
+            canal (dict): fila de canales
+        Returns:
+            view (list): id, nombre, canciones y portada de cada playlist usable, en orden
+    '''
+    view = [(copy['playlist_id'], copy['name'], copy['total'], copy['image_url']) for copy in copies if is_usable(copy, user, canal)]
+    return view
+
+
+@app.get('/canales/{canal_id}/ajustes/refrescar', response_class=HTMLResponse)
+def refresh_settings(request: Request, canal_id, user=Depends(require_user), conn=Depends(get_conn)):
+    '''
+    Revisa la biblioteca por detras de la Vista Ajustes y devuelve la Columna de Seed Playlists solo si cambio.
+        Args:
+            request (Request): request entrante
+            canal_id (str): id del Canal, tal como viene en el path
+            user (dict): User de la sesion
+            conn (psycopg.Connection): conexion del request
+        Returns:
+            response (Response): columna para el morph, o 204 sin cuerpo si no cambio nada o Spotify fallo
+    '''
+    canal = require_canal(conn, user, canal_id)
+    before = seed_list_view(copias.list_copies(conn, user['id']), user, canal)
+
+    try:
+        sync_library(conn, user)
+    except (*copias.READ_ERRORS, spotify.TokenRejected, TimeoutError):
+        # la vista ya esta pintada con lo guardado: si Spotify falla no se muestra nada
+        return Response(status_code=204)
+
+    copies = copias.list_copies(conn, user['id'])
+    if seed_list_view(copies, user, canal) == before:
+        return Response(status_code=204)
+
+    context = {'canal': canal, 'rows': seed_rows(conn, user, canal, copies)}
+    return templates.TemplateResponse(request, '_canal_seeds.html', context)
 
 
 def finish_settings_change(request, conn, user, canal_id):
@@ -1190,15 +1249,21 @@ def toggle_seed(request: Request, canal_id, user=Depends(require_user), form=Dep
     playlist_id = form['playlist_id']
 
     if form.get('on') == '1':
-        load_copies(conn, user, canal)
+        # una playlist guardada que no se puede usar se rechaza sin ir a Spotify
+        copy = copias.get_copy(conn, user['id'], playlist_id)
+        if copy is not None and not is_usable(copy, user, canal):
+            return action_failed(request, 'No encontramos esa playlist entre las que podes usar.')
+
+        # unica revision de la biblioteca del request: trae la playlist si todavia no estaba guardada y confirma sus artistas
+        result = refresh_copy(conn, user, playlist_id)
         copy = find_usable_copy(conn, user, canal, playlist_id)
+        if copy is None and result.get('error') is not None:
+            return action_failed(request, 'No pudimos leer esta playlist. Proba mas tarde.')
         if copy is None:
             return action_failed(request, 'No encontramos esa playlist entre las que podes usar.')
 
         # si Spotify falla pero ya hay copia, alcanza: el Run la pone al dia porque la Seed queda sin snapshot
-        result = refresh_copy(conn, user, playlist_id)
-        copy = copias.get_copy(conn, user['id'], playlist_id)
-        if result['status'] == 'failed' and (copy is None or copy['artists_snapshot_id'] is None):
+        if result['status'] == 'failed' and copy['artists_snapshot_id'] is None:
             return action_failed(request, 'No pudimos leer esta playlist. Proba mas tarde.')
 
         canales.add_source(conn, canal['id'], 'seed_playlist', copias.get_artists(conn, user['id'], playlist_id), playlist_id)
