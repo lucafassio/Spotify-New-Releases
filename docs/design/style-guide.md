@@ -61,9 +61,12 @@ degradado con la inicial grande en negro translucido. El tono del Canal tine su 
 Si Spotify tiene portada de la playlist (la del Canal es la de su Target), va encima del
 degradado; el degradado queda de fondo si no hay o no carga.
 
-**Avatares**: circulo con el tono del nombre y la inicial; encima va siempre una foto: la de
-Spotify en el Buscador de artistas, la de Deezer si el Run ya vinculo al artista, y si no la
-busca `/artistas/foto` en Deezer por ISRC o nombre. La inicial queda si no hay foto o no carga.
+**Avatares**: circulo con el tono del nombre y la inicial; encima va la foto: la de Spotify en
+el Buscador de artistas, y si no la de Deezer guardada por artista, directo del CDN. Las fotos
+son lo ultimo que aparece: un avatar sin foto guardada sale con la inicial y `data-foto`, y
+`static/fotos.js` las pide de a tandas recien cuando la pagina esta quieta (refresco de la
+playlist respondido), sin entrar en la cola de las Flechas. Un artista que Deezer no tiene se
+recuerda un dia. La inicial queda si no hay foto o no carga.
 El avatar del Perfil lleva la foto de perfil de Spotify del User.
 
 **Rueda**: los paneles con scroll corren 70% de lo que pide la rueda y frenan rapido, con

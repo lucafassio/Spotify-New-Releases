@@ -1,11 +1,12 @@
 import uuid
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import canales, web
+from app import canales, deezer, web
 from app import spotify as spotify_api
 from app.deezer import API_URL as DEEZER_URL
 from app.spotify import API_URL
@@ -677,47 +678,150 @@ def test_covers_show_the_spotify_image_over_the_gradient(canal, db, spotify):
     assert text.count('<img') == 4
 
 
-def test_every_artist_has_a_photo_linked_or_searched(canal, db, spotify):
+def cdn(key):
+    '''
+    Url final de una foto chica en el CDN de Deezer; con key vacia es la silueta de un artista sin foto.
+        Returns:
+            url (str): url de 56 px
+    '''
+    return f'https://cdn-images.dzcdn.net/images/artist/{key}/56x56-000000-80-0-0.jpg'
+
+
+def save_photo(db, artist_id, url, age='0 hours'):
+    '''
+    Deja guardada la foto de un artista, como si la hubiera buscado la web hace `age`.
+    '''
+    db.execute(
+        "INSERT INTO artist_photos (spotify_artist_id, url, checked_at) VALUES (%s, %s, now() - %s::interval)",
+        (artist_id, url, age),
+    )
+    db.commit()
+
+
+@pytest.fixture
+def photos(canal, db):
+    '''
+    Endpoint de fotos contra el schema de test: toma y suelta la conexion del test en vez del pool.
+        Returns:
+            post (callable): pide una tanda de ids o de dicts {id, name} y devuelve la respuesta
+    '''
+    web.app.dependency_overrides[web.get_conn_opener] = lambda: lambda: nullcontext(db)
+
+    def post(*artists):
+        body = {'artists': [artist if isinstance(artist, dict) else {'id': artist, 'name': ''} for artist in artists]}
+        return canal['client'].post('/artistas/fotos', json=body)
+
+    yield post
+    web.app.dependency_overrides.pop(web.get_conn_opener, None)
+
+
+def test_avatars_never_point_at_our_server(canal, db, spotify):
+    linked, saved, fresh, stale, unlinked = (uid(name) for name in ('Linked', 'Saved', 'Fresh', 'Stale', 'Unlinked'))
+    db.execute('INSERT INTO deezer_artists (spotify_artist_id, deezer_artist_id, matched_by) VALUES (%s, 27, %s)', (linked.lower(), 'isrc'))
+    save_photo(db, saved.lower(), cdn('saved'))
+    save_photo(db, fresh.lower(), None, '2 hours')
+    save_photo(db, stale.lower(), None, '25 hours')
+    read_once(canal, spotify, [entry('t1', linked), entry('t2', saved), entry('t3', fresh), entry('t4', stale), entry('t5', unlinked, isrc='AR9')])
+
+    fragment = canal['client'].get(urls(canal)[0]).text
+
+    # ninguna foto pasa por nuestro servidor ni por el redirect de la API de Deezer
+    assert 'src="/' not in fragment
+    assert 'api.deezer.com' not in fragment
+    # la guardada sale del CDN; las demas quedan con la inicial y las busca static/fotos.js
+    assert fragment.count('<img') == 1
+    assert f'src="{cdn("saved")}"' in fragment
+    assert f'data-foto="{linked.lower()}" data-foto-nombre="{linked}"' in fragment
+    assert f'data-foto="{unlinked.lower()}"' in fragment
+    assert f'data-foto="{stale.lower()}"' in fragment
+    # una que Deezer no tiene no se vuelve a pedir hasta el dia siguiente
+    assert f'data-foto="{fresh.lower()}"' not in fragment
+    assert f'data-foto="{saved.lower()}"' not in fragment
+
+    moved = canal['client'].post(f'/canales/{canal["canal_id"]}/artistas/sumar', data={'playlist_id': canal['pid'], 'artist_id': saved.lower()}, headers={'HX-Request': 'true'})
+
+    assert f'src="{cdn("saved")}"' in moved.text
+    assert f'src="{cdn("saved")}"' in canal['client'].get(f'/canales/{canal["canal_id"]}').text
+
+
+def test_photos_are_found_once_and_saved(canal, db, spotify, photos):
     linked, unlinked = uid('Linked'), uid('Unlinked')
     db.execute('INSERT INTO deezer_artists (spotify_artist_id, deezer_artist_id, matched_by) VALUES (%s, 27, %s)', (linked.lower(), 'isrc'))
     db.commit()
     read_once(canal, spotify, [entry('t1', linked), entry('t2', unlinked, isrc='AR9')])
-    photo = 'src="https://api.deezer.com/artist/27/image?size=small"'
+    by_id = spotify.get(f'{DEEZER_URL}/artist/27').respond(json={'id': 27, 'name': linked, 'picture_small': cdn('a')})
+    by_isrc = spotify.get(f'{DEEZER_URL}/track/isrc:AR9').respond(json={
+        'artist': {'id': 1, 'name': unlinked}, 'contributors': [{'id': 1, 'name': unlinked, 'picture_small': cdn('b')}],
+    })
+    expected = {linked.lower(): cdn('a'), unlinked.lower(): cdn('b')}
+
+    response = photos(linked.lower(), unlinked.lower())
+
+    assert response.status_code == 200
+    assert response.json() == {'photos': expected}
+    rows = db.execute('SELECT spotify_artist_id, url FROM artist_photos WHERE spotify_artist_id = ANY(%s)', (list(expected),)).fetchall()
+    assert dict(rows) == expected
+
+    # el mismo artista en otra pagina sale de la base sin ir a Deezer
+    assert photos(linked.lower(), unlinked.lower()).json() == {'photos': expected}
+    assert by_id.call_count == 1
+    assert by_isrc.call_count == 1
 
     fragment = canal['client'].get(urls(canal)[0]).text
 
-    # el vinculado va directo a Deezer; el otro lo busca la web por ISRC
-    assert fragment.count(photo) == 1
-    assert f'src="/artistas/foto?name={unlinked}&amp;isrc=AR9"' in fragment
-    assert fragment.count('<img') == 2
-
-    moved = canal['client'].post(f'/canales/{canal["canal_id"]}/artistas/sumar', data={'playlist_id': canal['pid'], 'artist_id': linked.lower()}, headers={'HX-Request': 'true'})
-
-    assert photo in moved.text
-    assert photo in canal['client'].get(f'/canales/{canal["canal_id"]}').text
+    assert 'data-foto=' not in fragment
+    assert f'src="{cdn("a")}"' in fragment
+    assert f'src="{cdn("b")}"' in fragment
 
 
-def test_photo_search_redirects_to_the_deezer_picture(canal, spotify):
-    picture = 'https://cdn-images.dzcdn.net/images/artist/abc/56x56-000000-80-0-0.jpg'
-    spotify.get(f'{DEEZER_URL}/track/isrc:AR9').respond(json={'artist': {'id': 1, 'name': 'Otro'}, 'contributors': [{'id': 1, 'name': 'Otro'}]})
-    spotify.get(f'{DEEZER_URL}/search/artist').respond(json={'data': [{'id': 2, 'name': 'Duki', 'nb_fan': 9, 'picture_small': picture}]})
+def test_artist_without_photo_is_remembered_for_a_day(canal, db, spotify, photos):
+    nobody = uid('Nobody')
+    read_once(canal, spotify, [entry('t1', nobody)])
+    spotify.get(f'{DEEZER_URL}/search/artist').respond(json={'data': [{'id': 2, 'name': nobody, 'picture_small': cdn('')}]})
 
-    response = canal['client'].get('/artistas/foto', params={'name': 'Duki', 'isrc': 'AR9'}, follow_redirects=False)
+    assert photos(nobody.lower()).json() == {'photos': {nobody.lower(): None}}
+    assert db.execute('SELECT url FROM artist_photos WHERE spotify_artist_id = %s', (nobody.lower(),)).fetchone() == (None,)
+    # queda la inicial y no se vuelve a pedir
+    fragment = canal['client'].get(urls(canal)[0]).text
+    assert 'data-foto=' not in fragment
+    assert '<img' not in fragment
 
-    assert response.status_code == 302
-    assert response.headers['location'] == picture
-    assert 'max-age' in response.headers['cache-control']
+    db.execute("UPDATE artist_photos SET checked_at = now() - interval '25 hours' WHERE spotify_artist_id = %s", (nobody.lower(),))
+    db.commit()
+
+    assert f'data-foto="{nobody.lower()}"' in canal['client'].get(urls(canal)[0]).text
 
 
-def test_photo_search_without_picture_leaves_the_initial(canal, spotify):
-    empty = 'https://cdn-images.dzcdn.net/images/artist//56x56-000000-80-0-0.jpg'
-    spotify.get(f'{DEEZER_URL}/search/artist').respond(json={'data': [{'id': 2, 'name': 'Duki', 'picture_small': empty}]})
+def test_deezer_quota_cuts_the_batch_without_sleeping(canal, db, spotify, photos, monkeypatch):
+    monkeypatch.setattr(deezer.time, 'sleep', lambda seconds: pytest.fail('la web no duerme esperando a Deezer'))
+    first, second = uid('First'), uid('Second')
+    read_once(canal, spotify, [entry('t1', first), entry('t2', second)])
+    spotify.get(f'{DEEZER_URL}/search/artist').respond(json={'error': {'code': 4, 'message': 'Quota limit exceeded'}})
 
-    assert canal['client'].get('/artistas/foto', params={'name': 'Duki'}).status_code == 404
+    response = photos(first.lower(), second.lower())
+
+    # sin respuesta para ninguno: static/fotos.js los vuelve a pedir mas tarde
+    assert response.json() == {'photos': {}}
+    assert db.execute('SELECT count(*) FROM artist_photos WHERE spotify_artist_id = ANY(%s)', ([first.lower(), second.lower()],)).fetchone()[0] == 0
 
 
-def test_photo_search_needs_a_session():
-    assert TestClient(web.app).get('/artistas/foto', params={'name': 'Duki'}).status_code == 401
+def test_buscador_name_is_searched_but_not_saved(canal, db, spotify, photos):
+    stranger = uid('stranger')
+    spotify.get(f'{DEEZER_URL}/search/artist').respond(json={'data': [{'id': 2, 'name': 'Duki', 'picture_small': cdn('c')}]})
+
+    assert photos({'id': stranger, 'name': 'Duki'}).json() == {'photos': {stranger: cdn('c')}}
+    assert db.execute('SELECT count(*) FROM artist_photos WHERE spotify_artist_id = %s', (stranger,)).fetchone()[0] == 0
+
+
+def test_photo_batch_is_capped(canal, photos):
+    ids = [uid('x') for _ in range(web.PHOTO_BATCH + 5)]
+
+    # sin nombre ni vinculo no hay nada que buscar: vuelven sin foto y sin tocar Deezer
+    assert len(photos(*ids).json()['photos']) == web.PHOTO_BATCH
+
+
+def test_photos_need_a_session():
+    assert TestClient(web.app).post('/artistas/fotos', json={'artists': [{'id': 'duki', 'name': 'Duki'}]}).status_code == 401
 
 
 def test_buscador_keeps_added_artists_dimmed(canal, db, spotify):
@@ -734,8 +838,9 @@ def test_buscador_keeps_added_artists_dimmed(canal, db, spotify):
     assert 'name="artist_id" value="duki"' not in text
     assert 'name="artist_id" value="nadie"' in text
     assert 'src="https://i.scdn.co/160"' in text
-    # sin foto en Spotify la busca la web en Deezer
-    assert 'src="/artistas/foto?name=Nadie"' in text
+    # sin foto en Spotify la busca static/fotos.js en Deezer, con la pagina quieta
+    assert 'data-foto="nadie" data-foto-nombre="Nadie"' in text
+    assert 'src="/' not in text
 
 
 def test_adding_from_the_buscador_dims_the_result(canal, spotify):

@@ -8,10 +8,16 @@ from urllib.parse import parse_qs, urlencode
 
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from psycopg.errors import LockNotAvailable, QueryCanceled
+from psycopg.rows import dict_row
 from psycopg_pool import PoolTimeout, TooManyRequests
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -55,25 +61,33 @@ templates.env.filters['initial'] = initial
 templates.env.filters['artist_key'] = copias.artist_sort_key
 def artist_photo(artist):
     '''
-    Foto para el avatar de un artista: la de Spotify si vino, la de Deezer si el Run lo vinculo, si no la busca /artistas/foto.
+    Foto para el avatar de un artista: la de Spotify si vino, si no la de Deezer guardada (#23). Nunca una url de este servidor.
         Args:
-            artist (dict): fila con name y opcionales image, deezer_artist_id e isrc
+            artist (dict): fila con opcionales image y photo_url
         Returns:
-            url (str): url de la foto, o None sin nombre para buscarlo
+            url (str): url de la foto, o None si todavia no la tenemos
     '''
-    if artist.get('image'):
-        return artist['image']
-    if artist.get('deezer_artist_id'):
-        return deezer.get_picture_url(artist['deezer_artist_id'])
-    if not artist.get('name'):
-        return None
-
-    params = {'name': artist['name'], 'isrc': artist['isrc']} if artist.get('isrc') else {'name': artist['name']}
-    url = f'/artistas/foto?{urlencode(params)}'
+    url = artist.get('image') or artist.get('photo_url') or None
     return url
 
 
+def photo_lookup(artist):
+    '''
+    Id que static/fotos.js usa para pedir la foto de un avatar recien cuando la pagina esta quieta.
+        Args:
+            artist (dict): fila con name, artist_id (id en el Buscador) y opcionales image, photo_url y photo_known
+        Returns:
+            artist_id (str): id de Spotify del artista, o None si ya tiene foto o hace menos de un dia que no tiene
+    '''
+    if artist_photo(artist) or artist.get('photo_known') or not artist.get('name'):
+        return None
+
+    artist_id = artist.get('artist_id') or artist.get('id')
+    return artist_id
+
+
 templates.env.filters['artist_photo'] = artist_photo
+templates.env.filters['photo_lookup'] = photo_lookup
 
 
 @asynccontextmanager
@@ -1253,32 +1267,138 @@ def search_artists(request: Request, canal_id, user=Depends(require_user), conn=
     return response
 
 
-# un artista sin foto vuelve a buscarse al dia siguiente; una encontrada no cambia en la semana
-PHOTO_MISSING_AGE = 24 * 60 * 60
-PHOTO_FOUND_AGE = 7 * 24 * 60 * 60
+# tope de artistas por tanda de static/fotos.js; Deezer corta a ~50 llamadas cada 5 s y cada foto gasta 1 o 2
+PHOTO_BATCH = 20
 
 
-@app.get('/artistas/foto')
-def find_artist_photo(request: Request):
+# FastAPI necesita la anotacion Request para inyectarlo, es la unica excepcion a no usar type hints
+async def read_json(request: Request):
     '''
-    Foto de un artista que el Run todavia no vinculo: la busca en Deezer y redirige. No toca la base, asi cada avatar no ocupa el pool.
+    Lee un cuerpo JSON; uno roto o vacio queda como dict vacio.
         Args:
-            request (Request): request entrante, con name e isrc opcional
+            request (Request): request entrante
         Returns:
-            response (Response): redirect a la foto, o 404 para que quede la inicial
+            body (dict): cuerpo del request
     '''
-    if not request.session.get('user_id'):
+    try:
+        body = await request.json()
+    except ValueError:
+        return {}
+
+    body = body if isinstance(body, dict) else {}
+    return body
+
+
+def read_photo_hints(conn, user_id, artist_ids):
+    '''
+    Lee lo que hay guardado de cada artista pedido: foto, vinculo con Deezer, y nombre e ISRC de las playlists y Canales del User.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            user_id (int): id interno del User
+            artist_ids (list): ids de Spotify
+        Returns:
+            hints (dict): artist_id -> dict con deezer_artist_id, photo_url, photo_known, name e isrc
+    '''
+    rows = conn.cursor(row_factory=dict_row).execute(
+        f'''
+        SELECT a.id AS artist_id, d.deezer_artist_id, {copias.PHOTO_COLUMNS}, n.name, n.isrc
+        FROM unnest(%s::text[]) a(id)
+        LEFT JOIN deezer_artists d ON d.spotify_artist_id = a.id
+        LEFT JOIN artist_photos p ON p.spotify_artist_id = a.id
+        LEFT JOIN LATERAL (
+            SELECT name, isrc FROM playlist_copy_artists WHERE user_id = %s AND artist_id = a.id
+            UNION ALL
+            SELECT sa.name, sa.isrc FROM source_artists sa
+            JOIN artist_sources s ON s.id = sa.artist_source_id JOIN canales c ON c.id = s.canal_id
+            WHERE c.user_id = %s AND sa.artist_id = a.id
+            ORDER BY isrc NULLS LAST LIMIT 1
+        ) n ON true
+        ''',
+        (artist_ids, user_id, user_id),
+    ).fetchall()
+    hints = {row['artist_id']: row for row in rows}
+    return hints
+
+
+def save_photos(conn, pictures):
+    '''
+    Guarda las fotos encontradas por artista; None es que Deezer no tiene y se vuelve a buscar en un dia.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            pictures (dict): artist_id -> url o None
+    '''
+    with conn.cursor() as cursor:
+        cursor.executemany(
+            '''
+            INSERT INTO artist_photos (spotify_artist_id, url) VALUES (%s, %s)
+            ON CONFLICT (spotify_artist_id) DO UPDATE SET url = EXCLUDED.url, checked_at = now()
+            ''',
+            list(pictures.items()),
+        )
+    conn.commit()
+
+
+def get_conn_opener():
+    '''
+    Para requests que esperan afuera de la base: en vez de tener una conexion todo el request, devuelve como tomar una corta del pool.
+        Returns:
+            opener (callable): sin argumentos, devuelve un context manager con la conexion
+    '''
+    return lambda: get_web_pool().connection()
+
+
+@app.post('/artistas/fotos')
+def find_artist_photos(request: Request, body=Depends(read_json), opener=Depends(get_conn_opener)):
+    '''
+    Fotos de una tanda de avatares que static/fotos.js pide con la pagina quieta: lo guardado sale de la base y el resto se busca en Deezer.
+    La conexion se suelta mientras se espera a Deezer, asi una tanda no ocupa el pool.
+        Args:
+            request (Request): request entrante
+            body (dict): artists, lista de {id, name}; el nombre solo se usa si el User no tiene guardado al artista (Buscador)
+            opener (callable): toma una conexion corta del pool
+        Returns:
+            response (JSONResponse): photos, artist_id -> url o None; los que faltan se reintentan mas tarde
+    '''
+    user_id = request.session.get('user_id')
+    if not user_id:
         return PlainTextResponse('', status_code=401)
 
-    name = request.query_params.get('name', '').strip()
-    try:
-        url = deezer.find_picture_url(name, request.query_params.get('isrc') or None) if name else None
-    except (httpx.HTTPError, deezer.DeezerError):
-        return PlainTextResponse('', status_code=503)
+    asked = body.get('artists') if isinstance(body.get('artists'), list) else []
+    names = {}
+    for artist in asked:
+        if isinstance(artist, dict) and isinstance(artist.get('id'), str) and artist['id'] and len(names) < PHOTO_BATCH:
+            names.setdefault(artist['id'], str(artist.get('name') or '').strip())
 
-    if url is None:
-        return PlainTextResponse('', status_code=404, headers={'Cache-Control': f'private, max-age={PHOTO_MISSING_AGE}'})
-    response = RedirectResponse(url, status_code=302, headers={'Cache-Control': f'private, max-age={PHOTO_FOUND_AGE}'})
+    if not names:
+        return JSONResponse({'photos': {}})
+
+    with opener() as conn:
+        hints = read_photo_hints(conn, user_id, list(names))
+
+    photos = {}
+    search, guessed = [], set()
+    for artist_id, hint in hints.items():
+        if hint['photo_url'] or hint['photo_known']:
+            photos[artist_id] = hint['photo_url']
+        elif hint['name'] or hint['deezer_artist_id']:
+            search.append(dict(hint, name=hint['name'] or names[artist_id]))
+        elif names[artist_id]:
+            # solo el Buscador manda artistas que el User no tiene guardados
+            search.append(dict(hint, name=names[artist_id]))
+            guessed.add(artist_id)
+        else:
+            photos[artist_id] = None
+
+    found = deezer.find_pictures(search) if search else {}
+    photos.update(found)
+
+    # un nombre que mando el navegador no se guarda: una foto equivocada quedaria para todos los Users
+    keep = {artist_id: url for artist_id, url in found.items() if artist_id not in guessed}
+    if keep:
+        with opener() as conn:
+            save_photos(conn, keep)
+
+    response = JSONResponse({'photos': photos})
     return response
 
 
