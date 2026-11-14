@@ -182,7 +182,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Interruptor Feats | Junto a cada Seed Playlist prendida: "Agregar featurings a la lista" |
 | Columna de reglas | Columna derecha de la Vista Ajustes, "General": Caja Playlist, Editor de Retencion y Caja Desvincular |
 | Caja Playlist | La Target Playlist del Canal (vive y muere con ella, ADR 0005) con el Formulario de playlist |
-| Formulario de playlist | Nombre y Descripcion de la Target, con "Guardar cambios": los cambia en Spotify y manda solo lo que cambio. No aparece si la playlist se perdio |
+| Formulario de playlist | Portada con el Nombre a su derecha, Descripcion abajo, con "Guardar cambios": los cambia en Spotify y manda solo lo que cambio. No aparece si la playlist se perdio |
 | Aviso de playlist perdida | Aviso warn en la Caja Playlist si la Target ya no esta en la biblioteca del User |
 | Editor de Retencion | Caja "Tiempo limite": Selector de Retencion + Semanas + "Se mantienen en el Canal las canciones durante N semanas" o "por tiempo indefinido" |
 | Semanas | 12 barritas que dibujan cuanto guarda |

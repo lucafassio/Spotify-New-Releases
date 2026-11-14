@@ -64,7 +64,7 @@ body.con-shell { overflow: hidden; }
 /* contenedor estable que reemplaza la navegacion: no ocupa lugar en la grilla, el Panel queda como columna */
 .vista { display: contents; }
 .panel { background: var(--superficie); border-radius: var(--r-l); min-height: 0; }
-.side { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.side { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .side .marca { padding: 16px 16px 10px; }
 .side-list { padding: 4px 8px 8px; display: flex; flex-direction: column; gap: 2px; }
 .nav-row { display: flex; gap: 12px; align-items: center; padding: 8px; border: 0; background: none; border-radius: var(--r-s); text-align: left; width: 100%; text-decoration: none; }
