@@ -37,6 +37,8 @@ Los tokens y el CSS de todas las vistas viven en `src/app/static/app.css` (un so
   pistas sacadas de la biblioteca del User (quien pesa, que falta, que se repite), nunca con
   relleno decorativo.
 - **Listas, no grillas**, para playlists: cada fila se despliega para mostrar sus artistas.
+- **Texto sin seleccion.** Nada se selecciona con el mouse (`user-select: none` en `body`), salvo
+  los campos donde se escribe.
 
 ## Color
 
@@ -159,7 +161,8 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Nombre | Que es |
 | --- | --- |
 | Columna izquierda | Las playlists del User y sus artistas. Apagada y sin respuesta si el Canal usa Seed Playlists |
-| Fila de playlist | Portada, nombre, cantidad de canciones y Boton ver artistas |
+| Fila de playlist | Asa de playlist, portada, nombre, cantidad de canciones y Boton ver artistas. Orden: el que el User armo arrastrando; si no toco nada, al reves de Spotify (la mas vieja arriba) |
+| Asa de playlist | Tres barras a la izquierda de la portada: arrastrarla cambia la fila de lugar. El orden se guarda por User, vale en todos sus Canales y no toca Spotify. No aparece si el Canal usa Seed Playlists ni en la Fila no disponible |
 | Fila no disponible | Fila gris al fondo de la lista, dice "No disponible" y no se despliega: playlists ajenas no colaborativas y la Target de este Canal |
 | Boton ver artistas | Flecha que despliega la fila; una sola abierta a la vez |
 | Indicador de lectura | Arriba de la Columna izquierda, fijo, mientras hay una fila abierta: "Buscando...", "Al dia", "Sin actualizar" o "Leida en parte" (Spotify no llego a mandar toda la playlist a tiempo: se ven los artistas leidos hasta ahi y la proxima apertura sigue desde ahi) |

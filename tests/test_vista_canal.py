@@ -339,6 +339,33 @@ def test_arrow_rejects_artist_missing_from_the_copy(canal, db, spotify):
 # Filas de playlist
 
 
+def test_dragged_order_is_saved_for_every_canal(logged, db, spotify):  # noqa: F811
+    owner = logged['spotify_user_id']
+    old, mid, new, target, other_target = uid('a'), uid('b'), uid('c'), uid('d'), uid('e')
+    canal_id = canales.create_canal(db, logged['user_id'], target, 'Radar', True)
+    other_id = canales.create_canal(db, logged['user_id'], other_target, 'Otro', True)
+    db.commit()
+    # Spotify manda la mas nueva primero
+    library(spotify, playlist(other_target, 'Otro', owner), playlist(target, 'Radar', owner), playlist(new, 'Nueva', owner), playlist(mid, 'Media', owner), playlist(old, 'Vieja', owner))
+    client = logged['client']
+
+    def order(canal, *ids):
+        text = client.get(f'/canales/{canal}').text
+        return sorted(ids, key=lambda pid: text.index(f'id="pl-{pid}"'))
+
+    # sin tocar nada: la mas vieja arriba
+    assert order(canal_id, old, mid, new, other_target) == [old, mid, new, other_target]
+    assert client.get(f'/canales/{canal_id}').text.count('data-n="Asa de playlist"') == 4
+
+    # este Canal no manda su Target: no la puede mover
+    saved = client.post('/playlists/orden', data={'ids': ','.join([new, other_target, old, mid])})
+
+    assert saved.status_code == 204
+    assert order(canal_id, old, mid, new, other_target) == [new, other_target, old, mid]
+    # vale en el otro Canal, donde la Target del primero conserva su lugar y la suya va al fondo
+    assert order(other_id, old, mid, new, target, other_target) == [new, old, target, mid, other_target]
+
+
 def test_rows_keep_spotify_order_with_unavailable_at_the_bottom(logged, db, spotify):  # noqa: F811
     owner = logged['spotify_user_id']
     own, other_target, foreign, target, colab = uid('a'), uid('b'), uid('c'), uid('d'), uid('e')
@@ -349,7 +376,8 @@ def test_rows_keep_spotify_order_with_unavailable_at_the_bottom(logged, db, spot
 
     text = logged['client'].get(f'/canales/{canal_id}').text
 
-    assert text.index(f'id="pl-{other_target}"') < text.index(f'id="pl-{colab}"') < text.index(f'id="pl-{own}"') < text.index(f'id="pl-{foreign}"') < text.index(f'id="pl-{target}"')
+    # al reves de Spotify: la mas vieja arriba
+    assert text.index(f'id="pl-{own}"') < text.index(f'id="pl-{colab}"') < text.index(f'id="pl-{other_target}"') < text.index(f'id="pl-{target}"') < text.index(f'id="pl-{foreign}"')
     assert text.count('No disponible') == 2
     assert text.count('data-n="Boton ver artistas"') == 3
     assert text.count('data-n="Fila no disponible"') == 2

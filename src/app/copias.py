@@ -86,15 +86,40 @@ def save_library(conn, user_id, playlists):
 
 def list_copies(conn, user_id):
     '''
-    Lista la biblioteca guardada del User, en el orden de Spotify.
+    Lista la biblioteca guardada del User: primero las que ordeno a mano, despues el resto al reves de Spotify (la mas vieja arriba).
         Args:
             conn (psycopg.Connection): conexion abierta
             user_id (int): id interno del User
         Returns:
             copies (list): filas de playlist_copies
     '''
-    copies = conn.cursor(row_factory=dict_row).execute(f'SELECT {COPY_COLUMNS} FROM playlist_copies WHERE user_id = %s ORDER BY position', (user_id,)).fetchall()
+    copies = conn.cursor(row_factory=dict_row).execute(
+        f'SELECT {COPY_COLUMNS} FROM playlist_copies WHERE user_id = %s ORDER BY manual_position NULLS LAST, position DESC', (user_id,),
+    ).fetchall()
     return copies
+
+
+def save_order(conn, user_id, playlist_ids):
+    '''
+    Guarda el orden manual de las playlists del User; las que no vienen (las que esa vista no deja mover) conservan su lugar.
+        Args:
+            conn (psycopg.Connection): conexion abierta
+            user_id (int): id interno del User
+            playlist_ids (list): ids de las playlists movibles, en el orden nuevo
+    '''
+    current = [copy['playlist_id'] for copy in list_copies(conn, user_id)]
+    moved = [playlist_id for playlist_id in dict.fromkeys(playlist_ids) if playlist_id in current]
+    slots = iter(moved)
+    ordered = [next(slots) if playlist_id in moved else playlist_id for playlist_id in current]
+
+    conn.execute(
+        '''
+        UPDATE playlist_copies pc SET manual_position = o.index
+        FROM unnest(%s::text[]) WITH ORDINALITY AS o(playlist_id, index)
+        WHERE pc.user_id = %s AND pc.playlist_id = o.playlist_id AND pc.manual_position IS DISTINCT FROM o.index
+        ''',
+        (ordered, user_id),
+    )
 
 
 def get_copy(conn, user_id, playlist_id):

@@ -1462,6 +1462,21 @@ def clear_artists(request: Request, canal_id, user=Depends(require_user), form=D
     return RedirectResponse(canal_url(canal['id'], form.get('open') or None), status_code=303)
 
 
+@app.post('/playlists/orden')
+def order_playlists(user=Depends(require_user), form=Depends(read_form), conn=Depends(get_conn)):
+    '''
+    Asa de playlist: guarda el orden que el User le dio a sus playlists, para todos sus Canales.
+        Args:
+            user (dict): User de la sesion
+            form (dict): ids, los de las playlists en el orden nuevo separados por coma
+            conn (psycopg.Connection): conexion del request
+        Returns:
+            response (Response): 204
+    '''
+    copias.save_order(conn, user['id'], [playlist_id for playlist_id in form.get('ids', '').split(',') if playlist_id])
+    return Response(status_code=204)
+
+
 @app.post('/canales/{canal_id}/seeds')
 def toggle_seed(request: Request, canal_id, user=Depends(require_user), form=Depends(read_form), conn=Depends(get_conn)):
     '''
