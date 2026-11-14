@@ -3,16 +3,7 @@
   <header class="head" data-n="Cabecera de Canal">{{ ui.cover(canal.target_name or '?', canal.target_playlist_id, 56, canal.target_image) }}
     <div class="grow"><span class="eyebrow">Canal</span><h1 class="ellip">{{ canal.target_name or 'Sin nombre' }}</h1></div>
     {% if section == 'ajustes' %}<a class="btn" href="/canales/{{ canal.id }}" data-n="Boton Ajustes">Volver a los artistas</a>{% else %}<a class="btn" href="/canales/{{ canal.id }}/ajustes" data-n="Boton Ajustes">Ajustes</a>{% endif %}
-    <details class="unlink">
-      <summary class="btn peligro" data-n="Boton Desvincular">Desvincular</summary>
-      <div class="confirm" data-n="Confirmacion de desvincular"><b>Desvincular "{{ canal.target_name }}"</b>
-        <p class="muted">Se borra el Canal. La playlist queda en tu Spotify, salvo que elijas borrarla.</p>
-        <div class="row wrap">
-          <form method="post" action="/canales/{{ canal.id }}/desvincular"><input type="hidden" name="borrar_playlist" value="0"><button class="btn">Borrar Canal</button></form>
-          <form method="post" action="/canales/{{ canal.id }}/desvincular"><input type="hidden" name="borrar_playlist" value="1"><button class="btn peligro">Borrar Canal y playlist</button></form>
-        </div>
-      </div>
-    </details>
+    {% if not disconnected %}<form method="post" action="/correr"><input type="hidden" name="volver" value="/canales/{{ canal.id }}{{ '/ajustes' if section == 'ajustes' }}"><button class="btn" data-n="Boton Buscar novedades">Buscar novedades</button></form>{% endif %}
   </header>
   {% include '_avisos.html' %}
   {% if section == 'ajustes' %}{% include '_canal_ajustes.html' %}{% else %}{% include '_canal_columnas.html' %}{% endif %}

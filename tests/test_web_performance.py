@@ -55,9 +55,8 @@ def test_repeated_navigation_reuses_library(screen):
     assert screen['route'].call_count == 1
 
 
-@pytest.mark.parametrize('action,data', [('guardado', {'on': '0'}), ('retencion', {'retencion': '4'})])
-def test_rule_change_is_a_fragment_without_spotify(screen, action, data):
-    response = screen['client'].post(f'/canales/1/{action}', data=data, headers={'HX-Request': 'true', 'HX-Target': 'canal-settings'})
+def test_rule_change_is_a_fragment_without_spotify(screen):
+    response = screen['client'].post('/canales/1/retencion', data={'retencion': '4'}, headers={'HX-Request': 'true', 'HX-Target': 'canal-settings'})
 
     assert response.status_code == 200
     assert not response.history
@@ -131,7 +130,7 @@ def test_expired_session_redirects_the_whole_page(screen):
         raise web.LoginRequired()
 
     web.app.dependency_overrides[web.require_user] = require_login
-    response = screen['client'].post('/canales/1/guardado', data={'on': '0'}, headers={'HX-Request': 'true'})
+    response = screen['client'].post('/canales/1/retencion', data={'retencion': '4'}, headers={'HX-Request': 'true'})
 
     assert response.headers['HX-Redirect'] == '/'
     assert 'Columna izquierda' not in response.text
@@ -212,7 +211,6 @@ def measure(sent, call, overhead=False):
 
 # topes de consultas por pantalla, sin BEGIN ni COMMIT; antes de #29 eran 2, 6, 8, 7, 5, 5, 12 y 9
 SCREEN_QUERIES = {
-    'inicio': 1,
     'canal': 3,
     'canal_open': 4,
     'fila': 3,
@@ -229,7 +227,6 @@ def test_screens_keep_their_round_trips(canal, round_trips, spotify):  # noqa: F
     fila, refresco = urls(canal)
     hx = {'HX-Request': 'true'}
     screens = {
-        'inicio': lambda: client.get('/'),
         'canal': lambda: client.get(base),
         'canal_open': lambda: client.get(base, params={'open': canal['pid']}),
         'fila': lambda: client.get(fila, headers=hx),

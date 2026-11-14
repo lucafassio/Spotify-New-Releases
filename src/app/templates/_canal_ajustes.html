@@ -1,18 +1,34 @@
 {% import '_macros.html' as ui %}
 <div class="cols">
-    <section class="col" data-n="Seed Playlists"><header><h2>Seed Playlists</h2>
+    <section class="col" data-n="Seed Playlists"><header><span class="row" style="gap:8px"><h2>Seed Playlists</h2>
+      <details class="info" data-n="Boton info de Seed"><summary aria-label="Que es una Seed Playlist">i</summary>
+        <p class="info-pop" role="note">Al activarse, el Canal reemplaza la lista manual de artistas por los artistas principales de las canciones de las playlists seleccionadas.</p></details></span>
       {# pinta con lo guardado y revisa la biblioteca por detras; con hx-sync propio no frena los Interruptores, que hacen cola en el Panel. 204 = sin cambios #}
       <div id="seeds-refresh" hx-get="/canales/{{ canal.id }}/ajustes/refrescar" hx-trigger="load" hx-target="#col-seeds" hx-swap="morph:outerHTML" hx-sync="this:drop"></div></header>
       {% include '_canal_seeds.html' %}
     </section>
 
-    <section class="col" data-n="Columna de reglas"><header><h2>Donde y como</h2></header>
+    <section class="col" data-n="Columna de reglas"><header><h2>General</h2></header>
       <div class="col-body scroll" id="rules-scroll">
         <div class="box" data-n="Caja Playlist"><h3>Playlist</h3>
-          <div class="row">{{ ui.cover(canal.target_name or '?', canal.target_playlist_id, 40, canal.target_image) }}<span class="grow"><b class="ellip" style="display:block">{{ canal.target_name }}</b><small>{{ 'La creo el bot' if canal.target_created_by_bot else 'Una playlist tuya' }}</small></span></div>
-          {% if not target_found %}<div class="aviso warn" data-n="Aviso de playlist perdida">No encontramos esta playlist en tu Spotify. Si la borraste, el Canal se borra en la proxima Entrega.</div>{% endif %}
+          <div class="row">{{ ui.cover(canal.target_name or '?', canal.target_playlist_id, 40, canal.target_image) }}<small class="grow">{{ 'La creo el bot' if canal.target_created_by_bot else 'Una playlist tuya' }}</small></div>
+          {% if not target_found %}<div class="aviso warn" data-n="Aviso de playlist perdida">No encontramos esta playlist en tu Spotify. Si la borraste, el Canal se borra en la proxima Entrega.</div>
+          {% else %}
+          <form method="post" action="/canales/{{ canal.id }}/playlist" class="stack" style="gap:8px" data-n="Formulario de playlist">
+            <label class="campo"><small>Nombre</small><input type="text" name="name" value="{{ canal.target_name or '' }}" maxlength="100" required autocomplete="off"></label>
+            <label class="campo"><small>Descripcion</small><textarea name="description" maxlength="300" rows="3">{{ target_description or '' }}</textarea></label>
+            <button class="btn" style="align-self:flex-start">Guardar cambios</button>
+          </form>
+          {% endif %}
         </div>
         {% include '_canal_settings.html' %}
+        <div class="box peligro" data-n="Caja Desvincular"><h3>Desvincular</h3>
+          <p class="muted">Se borra el Canal y deja de recibir novedades. La playlist queda en tu Spotify, salvo que elijas borrarla tambien.</p>
+          <div class="row wrap">
+            <form method="post" action="/canales/{{ canal.id }}/desvincular" hx-confirm="Borrar el Canal? La playlist queda en tu Spotify."><input type="hidden" name="borrar_playlist" value="0"><button class="btn" data-n="Boton Borrar Canal">Borrar Canal</button></form>
+            <form method="post" action="/canales/{{ canal.id }}/desvincular" hx-confirm="Borrar el Canal y la playlist? No se puede deshacer."><input type="hidden" name="borrar_playlist" value="1"><button class="btn peligro" data-n="Boton Borrar Canal y playlist">Borrar Canal y playlist</button></form>
+          </div>
+        </div>
       </div>
     </section>
 </div>

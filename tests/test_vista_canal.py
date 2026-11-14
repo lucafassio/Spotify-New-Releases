@@ -710,7 +710,8 @@ def test_ajustes_holds_the_config_and_canal_view_does_not(canal, spotify):
     assert 'data-n="Boton Ajustes"' in view
     assert 'data-n="Editor de Retencion"' not in view
     assert 'data-n="Columna izquierda"' not in settings
-    for name in ('Caja Playlist', 'Editor de Retencion', 'Interruptor Guardado', 'Resumen de Canal', 'Seed Playlists', 'Boton Desvincular'):
+    assert 'data-n="Caja Desvincular"' not in view
+    for name in ('Caja Playlist', 'Editor de Retencion', 'Seed Playlists', 'Boton info de Seed', 'Caja Desvincular'):
         assert f'data-n="{name}"' in settings
     assert f'href="/canales/{canal["canal_id"]}"' in settings
 

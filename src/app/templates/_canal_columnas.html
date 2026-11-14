@@ -23,7 +23,7 @@
       </div>
     </section>
 
-    <section class="col" data-n="Columna derecha"><header><h2>Quienes entran</h2>
+    <section class="col" data-n="Columna derecha"><header><h2>Artistas seleccionados</h2>
       <span class="col-acc"><small id="whitelist-count" class="nums">{{ whitelist | length }} artistas</small>{% if not uses_seed %}<form id="wl-vaciar" method="post" action="/canales/{{ canal.id }}/artistas/vaciar" hx-confirm="Sacar a todos los artistas de este Canal?" {% if not whitelist %}hidden{% endif %}
         onsubmit="this.elements.open.value = (document.querySelector('[data-playlist][aria-expanded=&quot;true&quot;]') || this).dataset.playlist || ''"><input type="hidden" name="open" value="{{ open_id or '' }}"><button class="btn fantasma chico" data-n="Boton Clear all">Clear all</button></form>{% endif %}</span></header>
       <div class="col-body scroll" id="col-whitelist" hx-ext="ignore:morph">

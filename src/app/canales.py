@@ -160,15 +160,20 @@ def set_retencion(conn, canal, retencion_n):
     conn.execute('UPDATE canales SET retencion_n = %s WHERE id = %s', (retencion_n, canal['id']))
 
 
-def set_guardado(conn, canal_id, on):
+def save_target_details(conn, canal, changes):
     '''
-    Prende o apaga el filtro de Guardado del Canal.
+    Guarda en el Canal y en la copia de su Target lo que el User acaba de cambiar en Spotify.
         Args:
             conn (psycopg.Connection): conexion abierta
-            canal_id (int): id del Canal
-            on (bool): True saltea lo que el User ya tiene
+            canal (dict): fila de canales
+            changes (dict): name y/o description, solo lo que cambio
     '''
-    conn.execute('UPDATE canales SET guardado_filter = %s WHERE id = %s', (on, canal_id))
+    if 'name' in changes:
+        conn.execute('UPDATE canales SET target_name = %s WHERE id = %s', (changes['name'], canal['id']))
+    conn.execute(
+        'UPDATE playlist_copies SET name = coalesce(%s, name), description = coalesce(%s, description) WHERE user_id = %s AND playlist_id = %s',
+        (changes.get('name'), changes.get('description'), canal['user_id'], canal['target_playlist_id']),
+    )
 
 
 def get_sources(conn, canal_id):

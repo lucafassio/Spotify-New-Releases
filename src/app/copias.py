@@ -1,3 +1,4 @@
+import html
 import unicodedata
 
 import httpx
@@ -7,7 +8,7 @@ from psycopg.types.json import Jsonb
 from app import spotify
 
 # partial_artists queda afuera: solo lo lee el refresco que sigue una lectura cortada
-COPY_COLUMNS = 'playlist_id, position, name, owner_id, collaborative, snapshot_id, total, image_url, artists_snapshot_id, artists_total, last_track_uri, partial_snapshot_id, partial_total'
+COPY_COLUMNS = 'playlist_id, position, name, description, owner_id, collaborative, snapshot_id, total, image_url, artists_snapshot_id, artists_total, last_track_uri, partial_snapshot_id, partial_total'
 
 # lado en px de la Portada mas grande, al doble para pantallas de alta densidad
 COVER_SIZE = 112
@@ -58,19 +59,21 @@ def save_library(conn, user_id, playlists):
 
     conn.execute(
         '''
-        INSERT INTO playlist_copies (user_id, playlist_id, position, name, owner_id, collaborative, snapshot_id, total, image_url)
-        SELECT %s, * FROM unnest(%s::text[], %s::integer[], %s::text[], %s::text[], %s::boolean[], %s::text[], %s::integer[], %s::text[])
+        INSERT INTO playlist_copies (user_id, playlist_id, position, name, description, owner_id, collaborative, snapshot_id, total, image_url)
+        SELECT %s, * FROM unnest(%s::text[], %s::integer[], %s::text[], %s::text[], %s::text[], %s::boolean[], %s::text[], %s::integer[], %s::text[])
         ON CONFLICT (user_id, playlist_id) DO UPDATE SET
-            position = EXCLUDED.position, name = EXCLUDED.name, owner_id = EXCLUDED.owner_id,
+            position = EXCLUDED.position, name = EXCLUDED.name, description = EXCLUDED.description, owner_id = EXCLUDED.owner_id,
             collaborative = EXCLUDED.collaborative, snapshot_id = EXCLUDED.snapshot_id, total = EXCLUDED.total, image_url = EXCLUDED.image_url
-        WHERE (playlist_copies.position, playlist_copies.name, playlist_copies.owner_id, playlist_copies.collaborative, playlist_copies.snapshot_id, playlist_copies.total, playlist_copies.image_url)
-            IS DISTINCT FROM (EXCLUDED.position, EXCLUDED.name, EXCLUDED.owner_id, EXCLUDED.collaborative, EXCLUDED.snapshot_id, EXCLUDED.total, EXCLUDED.image_url)
+        WHERE (playlist_copies.position, playlist_copies.name, playlist_copies.description, playlist_copies.owner_id, playlist_copies.collaborative, playlist_copies.snapshot_id, playlist_copies.total, playlist_copies.image_url)
+            IS DISTINCT FROM (EXCLUDED.position, EXCLUDED.name, EXCLUDED.description, EXCLUDED.owner_id, EXCLUDED.collaborative, EXCLUDED.snapshot_id, EXCLUDED.total, EXCLUDED.image_url)
         ''',
         (
             user_id,
             [playlist['id'] for playlist in unique],
             [position[playlist['id']] for playlist in unique],
             [playlist['name'] for playlist in unique],
+            # Spotify devuelve la descripcion con entidades html (&#x27;)
+            [html.unescape(playlist.get('description') or '') for playlist in unique],
             [playlist['owner']['id'] for playlist in unique],
             [bool(playlist.get('collaborative')) for playlist in unique],
             [playlist.get('snapshot_id') for playlist in unique],

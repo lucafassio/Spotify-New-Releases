@@ -1,17 +1,25 @@
 {% extends 'shell.html' %}
 
+{# sin Canales; con alguno, Inicio manda al primero salvo que venga de una falla, y entonces solo muestra el Aviso #}
 {% block panel %}
 <section class="panel main" data-n="Panel">
-  <header class="head" data-n="Cabecera de Inicio"><div class="grow"><span class="eyebrow">Tu biblioteca</span><h1>Hola, {{ display_name }}</h1></div>
-    {% if canales and not disconnected %}<form method="post" action="/correr"><button class="btn" data-n="Boton Buscar novedades">Buscar novedades ahora</button></form>{% endif %}</header>
+  <header class="head" data-n="Cabecera de bienvenida"><div class="grow"><span class="eyebrow">Radar de Viernes</span><h1>Hola, {{ display_name }}</h1></div></header>
   {% include '_avisos.html' %}
-  <div class="vacio">
-    {% if canales %}
-    <p class="muted">Elegi un Canal de la izquierda para ver de quien trae novedades y a que playlist.</p>
-    {% else %}
-    <p class="muted">Todavia no tenes Canales.</p>
-    <a class="btn primario" href="/canales/nuevo">Crear un Canal</a>
-    {% endif %}
+  {% if canales %}
+  <div class="bienvenida"><p class="muted">Elegi un Canal de la izquierda.</p></div>
+  {% else %}
+  <div class="bienvenida scroll" data-n="Vista sin Canales">
+    <div class="stack" style="gap:8px">
+      <h2>Todavia no tenes Canales</h2>
+      <p class="muted">Un Canal es una playlist que se llena sola: cada viernes le sumamos lo nuevo de los artistas que elijas.</p>
+    </div>
+    <ol class="pasos" data-n="Pasos de Canal">
+      <li><b>Elegi la playlist</b><small>Una nueva, que armamos nosotros, o una que ya tengas.</small></li>
+      <li><b>Elegi los artistas</b><small>Buscalos a mano o traelos de tus playlists.</small></li>
+      <li><b>Listo cada viernes</b><small>Lo nuevo de la semana aparece solo en tu playlist.</small></li>
+    </ol>
+    <a class="btn primario" href="/canales/nuevo" data-n="Boton Crear Canal">Crear un Canal</a>
   </div>
+  {% endif %}
 </section>
 {% endblock %}

@@ -21,7 +21,7 @@ Con Seed Playlists prendidas, la Columna izquierda queda apagada y no responde.
 Un cambio hecho directamente en Spotify puede tardar uno o dos minutos en verse (ADR 0008).
 Durante un envio se deshabilita su boton; los errores de conexion o limites de Spotify aparecen como Aviso de accion sin borrar la vista.
 Navegar entre vistas (Barra lateral, Boton Ajustes, Nuevo Canal) cambia solo el Panel y la Barra lateral; la pagina entera llega solo al entrar por URL o recargar.
-Apoyar el mouse sobre una Fila de Canal o el Boton Inicio precarga su vista: el click la muestra sin esperar al servidor.
+Apoyar el mouse sobre una Fila de Canal precarga su vista: el click la muestra sin esperar al servidor.
 Los tokens y el CSS de todas las vistas viven en `src/app/static/app.css` (un solo archivo, cacheado con version en la URL).
 
 ## Principios
@@ -106,7 +106,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Boton primario | Pildora verde, texto negro. Una por vista |
 | Boton secundario | Pildora con contorno gris ("Ajustes", "Sumar") |
 | Boton fantasma | Solo texto gris |
-| Boton Desvincular | Texto rojo, abre la Confirmacion de desvincular |
+| Boton peligro | Texto rojo sin contorno ("Borrar Canal y playlist") |
 | Interruptor | Switch on/off (verde prendido) |
 | Selector | Fila de pildoras donde una queda blanca |
 | Aviso | Caja de texto con fondo: neutra, ok, warn, crit |
@@ -140,7 +140,6 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Nombre | Que es |
 | --- | --- |
 | Barra lateral | Panel izquierdo fijo |
-| Boton Inicio | Primera fila: "Tu biblioteca" |
 | Lista de Canales | Canales del User con el +; scrollea sola |
 | Fila de Canal | Portada, nombre y cantidad de artistas |
 | Boton Nuevo Canal | El + de la Lista de Canales |
@@ -150,9 +149,9 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Aviso de accion | Aviso ok arriba del Panel, una sola vez, despues de una accion (ej: Canal borrado) o si Spotify fallo |
 | Aviso de tope | Aviso arriba del Panel cuando una Target Playlist pasa el 90% (warn) o el 95% (crit) de su tope: 9.500 en la del bot, 10.000 en una del User |
 | Panel | Area derecha: Cabecera + Columnas |
-| Cabecera de Canal | Portada, nombre del Canal, Boton Ajustes y Desvincular, con el tono del Canal |
+| Cabecera de Canal | Portada, nombre del Canal, Boton Ajustes y Boton Buscar novedades, con el tono del Canal |
+| Boton Buscar novedades | Boton secundario en la Cabecera de Canal: corre el Run de todos los Canales en segundo plano y vuelve a la misma vista con un Aviso de accion. No aparece con el User desconectado |
 | Boton Ajustes | Abre la Vista Ajustes en lugar de las dos columnas; desde ahi vuelve a la Vista Canal |
-| Confirmacion de desvincular | Globo oscuro-rojo bajo la Cabecera con las dos formas de borrar: Borrar Canal / Borrar Canal y playlist |
 | Columna | Cada una de las dos columnas del Panel, en Vista Canal y en Vista Ajustes; scrollea sola |
 
 ### Vista Canal
@@ -166,7 +165,7 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Indicador de lectura | Arriba de la Columna izquierda, fijo, mientras hay una fila abierta: "Buscando...", "Al dia", "Sin actualizar" o "Leida en parte" (Spotify no llego a mandar toda la playlist a tiempo: se ven los artistas leidos hasta ahi y la proxima apertura sigue desde ahi) |
 | Artistas de la playlist | Filas de artista en orden alfabetico, invitados incluidos, sin los que ya estan en la Columna derecha. Si no queda ninguno: "Ya estan todos". Si nunca se pudo leer: "No pudimos leer esta playlist. Proba mas tarde." |
 | Bloque de nuevos | Al fondo de la fila abierta, apartado: "2 artistas nuevos" y sus Filas de artista en orden alfabetico. Dura hasta plegar la playlist; al volver a abrirla se mezclan con el resto |
-| Columna derecha | "Quienes entran": la Whitelist del Canal en Filas de artista, en orden alfabetico. Vacia: "Elegi artistas desde una playlist o buscalos." |
+| Columna derecha | "Artistas seleccionados": la Whitelist del Canal en Filas de artista, en orden alfabetico. Vacia: "Elegi artistas desde una playlist o buscalos." |
 | Boton Clear all | En el encabezado de la Columna derecha, a la derecha del contador, en blanco: vacia la Lista manual del Canal previa confirmacion. No aparece si el Canal usa Seed Playlists ni con la Whitelist vacia |
 | Buscador de artistas | Arriba de la Columna derecha; suma a la Lista manual. No aparece si el Canal usa Seed Playlists. Busca desde 2 letras, 200 ms despues de dejar de tipear; al vaciarlo se limpian los resultados |
 | Aviso de busqueda | Aviso warn en lugar de los resultados del Buscador si Spotify pidio una pausa o se quedo sin cuota; el resto de la vista sigue igual |
@@ -177,16 +176,17 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 
 | Nombre | Que es |
 | --- | --- |
-| Seed Playlists | Las playlists usables del User con un Interruptor de playlist cada una. Con una prendida el Canal usa Seed; con ninguna, su Lista manual. Se pinta con la biblioteca guardada y se pone al dia sola por detras, sin perder el scroll, solo si aparecio, se fue o cambio una playlist; si Spotify falla queda como estaba |
+| Seed Playlists | Las playlists usables del User con un Interruptor de playlist cada una; al lado del titulo, el Boton info de Seed. Con una prendida el Canal usa Seed; con ninguna, su Lista manual. Se pinta con la biblioteca guardada y se pone al dia sola por detras, sin perder el scroll, solo si aparecio, se fue o cambio una playlist; si Spotify falla queda como estaba |
 | Interruptor de playlist | Prende o apaga la playlist como Seed Playlist de este Canal |
-| Interruptor Feats | Junto a cada Seed Playlist prendida: sumar tambien a sus invitados |
-| Columna de reglas | Columna derecha de la Vista Ajustes: Caja Playlist, Editor de Retencion, Interruptor Guardado y Resumen de Canal |
-| Caja Playlist | La Target Playlist del Canal, solo lectura: el Canal vive y muere con ella (ADR 0005) |
+| Boton info de Seed | "i" junto al titulo Seed Playlists: abre un globo que explica que al activarse el Canal reemplaza la Lista manual por los artistas principales de esas playlists |
+| Interruptor Feats | Junto a cada Seed Playlist prendida: "Agregar featurings a la lista" |
+| Columna de reglas | Columna derecha de la Vista Ajustes, "General": Caja Playlist, Editor de Retencion y Caja Desvincular |
+| Caja Playlist | La Target Playlist del Canal (vive y muere con ella, ADR 0005) con el Formulario de playlist |
+| Formulario de playlist | Nombre y Descripcion de la Target, con "Guardar cambios": los cambia en Spotify y manda solo lo que cambio. No aparece si la playlist se perdio |
 | Aviso de playlist perdida | Aviso warn en la Caja Playlist si la Target ya no esta en la biblioteca del User |
-| Editor de Retencion | Caja "Cuanto guarda": Selector de Retencion + Semanas |
+| Editor de Retencion | Caja "Tiempo limite": Selector de Retencion + Semanas + "Se mantienen en el Canal las canciones durante N semanas" o "por tiempo indefinido" |
 | Semanas | 12 barritas que dibujan cuanto guarda |
-| Interruptor Guardado | Caja "Saltear lo que ya tengo" |
-| Resumen de Canal | Caja "En una frase": el Canal contado en una oracion |
+| Caja Desvincular | Ultima caja de la Columna de reglas, con borde rojo: Borrar Canal / Borrar Canal y playlist, cada uno con confirmacion |
 
 ### Vista Nuevo Canal
 
@@ -199,15 +199,15 @@ Escala: 11 (eyebrow) / 12.5 (small) / 14 (texto) / 15 (h3 de caja) / 20 (h2 de c
 | Selector de playlist existente | Lista de playlists propias; las que ya son Target dicen "en uso" |
 | Aviso de Nuevo Canal | Aviso crit: tope de 5 Canales, nombre vacio, playlist ajena |
 
-### Vista Inicio (Tu biblioteca)
+### Vista sin Canales
+
+Solo la ve un User sin Canales; con alguno, `/` abre el primero. Si `/` llega por una falla (Spotify caido, desconexion) muestra solo la Cabecera, el Aviso y "Elegi un Canal de la izquierda", para no rebotar al Canal que fallo.
 
 | Nombre | Que es |
 | --- | --- |
-| Cabecera de Inicio | "Hola, Luca" |
-| Boton Buscar novedades | Boton secundario en la Cabecera de Inicio: corre el Run en segundo plano y avisa con un Aviso de accion. Solo con Canales y sin desconexion |
-| Numeros de biblioteca | 3 numeros: playlists, artistas, Canales |
-| Top de biblioteca | Barras de los 14 artistas con mas temas; gris si no estan en ningun Canal |
-| Tarjeta de gemelas | Dos playlists que se pisan, con "Unir en una" y "Dejarlas asi" |
+| Cabecera de bienvenida | "Hola, Luca" |
+| Pasos de Canal | 3 tarjetas numeradas: elegir la playlist, elegir los artistas, listo cada viernes. En celular se apilan |
+| Boton Crear Canal | Boton primario: lleva a la Vista Nuevo Canal |
 
 ### Del prototipo (no son producto)
 

@@ -275,6 +275,10 @@ class LoginRequired(Exception):
     pass
 
 
+# marca de la sesion: el redirect a Inicio viene de una falla y no tiene que rebotar al primer Canal, que puede ser el que fallo
+STAY_HOME = 'stay_home'
+
+
 class CanalMissing(Exception):
     pass
 
@@ -402,6 +406,8 @@ def user_disconnected(request, error):
         Returns:
             response (RedirectResponse): redirect a /
     '''
+    # el Canal pudo ser lo que fallo: Inicio no tiene que volver a mandarlo ahi
+    request.session[STAY_HOME] = True
     return home_redirect(request)
 
 
@@ -430,6 +436,7 @@ def action_failed(request, message, retry=None):
         response.headers.update({'HX-Retarget': '#action-notice', 'HX-Reswap': 'innerHTML'})
     else:
         request.session['flash'] = message
+        request.session[STAY_HOME] = True
         response = RedirectResponse('/', status_code=303)
     if retry is not None:
         response.headers['Retry-After'] = str(retry)
@@ -589,12 +596,12 @@ def render_view(request, name, context):
 @read_only
 def home(request: Request, conn=Depends(get_conn)):
     '''
-    Muestra el dashboard si hay sesion; si no, la Pantalla de login.
+    Con sesion manda al primer Canal, o muestra la Vista sin Canales; sin sesion, la Pantalla de login.
         Args:
             request (Request): request entrante
             conn (psycopg.Connection): conexion del request
         Returns:
-            response (TemplateResponse): html de la pagina
+            response (Response): html de la pagina o redirect al primer Canal
     '''
     user_id = request.session.get('user_id')
     user, request.state.canales = canales.get_user_canales(conn, user_id) if user_id else (None, None)
@@ -608,6 +615,10 @@ def home(request: Request, conn=Depends(get_conn)):
         error = LOGIN_ERRORS.get(request.query_params.get('error'))
         response = templates.TemplateResponse(request, 'login.html', {'error': error})
         return response
+
+    # Inicio no tiene contenido propio: con Canales abre el primero y el flash espera a esa vista
+    if request.state.canales and not request.session.pop(STAY_HOME, False):
+        return RedirectResponse(canal_url(request.state.canales[0]['id']), status_code=303)
 
     context = shell_context(request, conn, user, view='inicio')
     response = render_view(request, 'dashboard.html', context)
@@ -638,19 +649,22 @@ def run_in_background(user_id):
 
 # FastAPI necesita la anotacion BackgroundTasks para inyectarlo, igual que con Request
 @app.post('/correr')
-def run_now(request: Request, background_tasks: BackgroundTasks, user=Depends(require_user)):
+def run_now(request: Request, background_tasks: BackgroundTasks, user=Depends(require_user), form=Depends(read_form)):
     '''
     Boton Buscar novedades: dispara el mismo Run que corre el Tick, en segundo plano.
         Args:
             request (Request): request entrante
             background_tasks (BackgroundTasks): cola de tareas que corren despues de responder
             user (dict): User de la sesion
+            form (dict): volver, la vista del Canal donde estaba el boton
         Returns:
-            response (RedirectResponse): vuelta a Inicio con un Aviso de accion
+            response (RedirectResponse): vuelta a esa vista con un Aviso de accion
     '''
     background_tasks.add_task(run_in_background, user['id'])
     request.session['flash'] = 'Estamos buscando novedades de tus artistas. Lo que aparezca entra en la Entrega del viernes.'
-    return RedirectResponse('/', status_code=303)
+    # solo una vista propia: un volver armado a mano no puede mandar a otro sitio
+    back = form.get('volver', '')
+    return RedirectResponse(back if back.startswith('/canales/') else '/', status_code=303)
 
 
 ALTA_ERRORS = {
@@ -1116,13 +1130,15 @@ def canal_context(request, conn, user, canal, copies, **extra):
     '''
     user_canales = get_user_canales(request, conn, user)
     canal = next((item for item in user_canales if item['id'] == canal['id']), canal)
+    target = next((copy for copy in copies if copy['playlist_id'] == canal['target_playlist_id']), None)
     context = shell_context(
         request, conn, user,
         user_canales=user_canales,
         view=canal['id'],
         canal=canal,
         whitelist_count=canal['whitelist_count'],
-        target_found=any(copy['playlist_id'] == canal['target_playlist_id'] for copy in copies),
+        target_found=target is not None,
+        target_description=target.get('description') if target else None,
         retencion_options=RETENCION_OPTIONS,
         **extra,
     )
@@ -1131,7 +1147,7 @@ def canal_context(request, conn, user, canal, copies, **extra):
 
 def render_settings(request, canal_id, user, conn, partial=False):
     '''
-    Vista Ajustes: Seed Playlists, Caja Playlist, Retencion, Guardado y Resumen de Canal, en lugar de las dos columnas.
+    Vista Ajustes: Seed Playlists, Caja Playlist, Retencion y Caja Desvincular, en lugar de las dos columnas.
         Args:
             request (Request): request entrante
             canal_id (str): id del Canal, tal como viene en el path
@@ -1227,7 +1243,7 @@ def finish_settings_change(request, conn, user, canal_id):
 
 def finish_rules_change(request, conn, user, canal_id):
     '''
-    Devuelve solo las cajas de Retencion, Guardado y Resumen cuando el formulario usa HTMX.
+    Devuelve solo la caja de Retencion cuando el formulario usa HTMX.
         Args:
             request (Request): request entrante
             conn (psycopg.Connection): conexion del request
@@ -1725,22 +1741,44 @@ def set_retencion(request: Request, canal_id, user=Depends(require_user), form=D
     return finish_rules_change(request, conn, user, canal['id'])
 
 
-@app.post('/canales/{canal_id}/guardado')
-def set_guardado(request: Request, canal_id, user=Depends(require_user), form=Depends(read_form), conn=Depends(get_conn)):
+@app.post('/canales/{canal_id}/playlist')
+def edit_playlist(request: Request, canal_id, user=Depends(require_user), form=Depends(read_form), conn=Depends(get_conn)):
     '''
-    Prende o apaga el filtro de Guardado del Canal.
+    Cambia en Spotify el nombre y la descripcion de la Target Playlist desde la Caja Playlist.
         Args:
+            request (Request): request entrante
             canal_id (str): id del Canal, tal como viene en el path
             user (dict): User de la sesion
-            form (dict): on (1 o 0)
+            form (dict): name y description
             conn (psycopg.Connection): conexion del request
         Returns:
-            response (Response): cajas de la Vista Ajustes, o redirect a ella sin JS
+            response (RedirectResponse): vuelta a la Vista Ajustes con un Aviso de accion
     '''
     canal = require_canal(request, conn, user, canal_id)
-    canales.set_guardado(conn, canal['id'], form.get('on') == '1')
-    conn.commit()
-    return finish_rules_change(request, conn, user, canal['id'])
+    back = RedirectResponse(f'/canales/{canal["id"]}/ajustes', status_code=303)
+    name = form.get('name', '')
+    # Spotify no guarda saltos de linea en la descripcion
+    description = ' '.join(form.get('description', '').split())
+
+    if not name:
+        request.session['flash'] = 'La playlist necesita un nombre.'
+        return back
+
+    # solo viaja lo que cambio: una descripcion que todavia no leimos no se pisa con el campo vacio
+    copy = copias.get_copy(conn, user['id'], canal['target_playlist_id'])
+    changes = {}
+    if name != canal['target_name']:
+        changes['name'] = name
+    if description != ((copy or {}).get('description') or ''):
+        changes['description'] = description
+
+    if changes:
+        spotify.update_playlist_details(get_token(conn, user), canal['target_playlist_id'], **changes)
+        canales.save_target_details(conn, canal, changes)
+        conn.commit()
+        request.session['flash'] = 'Guardamos los cambios en tu playlist.'
+
+    return back
 
 
 @app.post('/canales/{canal_id}/desvincular')

@@ -4,6 +4,10 @@ status: accepted
 
 # Varios Canales por User
 
+> Actualizacion: el filtro de Guardado deja de ser un ajuste del Canal. Todos lo tienen
+> prendido (migracion 0010) y la Vista Ajustes ya no lo muestra; la columna `guardado_filter`
+> queda por compatibilidad.
+
 El mapa dejaba "varias Target Playlists por User" fuera de scope. Lo revertimos: un User arma
 hasta 5 **Canales**, cada uno con su Whitelist, su Target Playlist, su Retencion y su filtro
 de Guardado, para separar por ejemplo "reggaeton nuevo" de "rock nuevo". Canal y Target

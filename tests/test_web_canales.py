@@ -228,17 +228,85 @@ def test_whitelist_ids_are_only_the_ids(logged, db):
     assert canales.get_whitelist_ids(db, canal_id) == {'duki', 'bb'}
 
 
-def test_retencion_and_guardado_are_saved(logged, db, spotify):
+def test_retencion_is_saved(logged, db, spotify):
     canal_id = canales.create_canal(db, logged['user_id'], 'nueva', 'Radar', True)
     mock_library(spotify, logged['spotify_user_id'])
 
-    logged['client'].post(f'/canales/{canal_id}/retencion', data={'retencion': '4'})
-    response = logged['client'].post(f'/canales/{canal_id}/guardado', data={'on': '0'})
+    response = logged['client'].post(f'/canales/{canal_id}/retencion', data={'retencion': '4'})
     canal = canales.get_canal(db, logged['user_id'], canal_id)
 
     assert canal['retencion_n'] == 4
-    assert canal['guardado_filter'] is False
-    assert 'guarda 4 semanas' in response.text
+    assert 'Se mantienen en el Canal las canciones durante 4 semanas.' in response.text
+
+
+def test_guardado_is_not_a_setting(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'nueva', 'Radar', True)
+    mock_library(spotify, logged['spotify_user_id'])
+
+    settings = logged['client'].get(f'/canales/{canal_id}/ajustes').text
+    response = logged['client'].post(f'/canales/{canal_id}/guardado', data={'on': '0'})
+
+    assert 'Interruptor Guardado' not in settings
+    assert response.status_code == 404
+    assert canales.get_canal(db, logged['user_id'], canal_id)['guardado_filter'] is True
+
+
+def library_with_target(spotify, owner, description='Lo nuevo de tus artistas'):
+    '''
+    Biblioteca de prueba con la Target 'mia' y su descripcion.
+        Returns:
+            route (respx.Route): ruta de GET /me/playlists
+    '''
+    target = dict(playlist('mia', 'Trap', owner), description=description)
+    return spotify.get(f'{API_URL}/me/playlists').respond(json={'items': [target], 'next': None})
+
+
+def test_settings_show_target_name_and_description(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    library_with_target(spotify, logged['spotify_user_id'], 'Lo de &#x27;hoy&#x27;')
+
+    settings = logged['client'].get(f'/canales/{canal_id}/ajustes').text
+
+    assert 'name="name" value="Trap"' in settings
+    assert 'Lo de &#39;hoy&#39;</textarea>' in settings
+
+
+def test_edit_playlist_sends_only_what_changed(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    library_with_target(spotify, logged['spotify_user_id'])
+    logged['client'].get(f'/canales/{canal_id}/ajustes')
+    put = spotify.put(f'{API_URL}/playlists/mia').respond(200)
+
+    response = logged['client'].post(f'/canales/{canal_id}/playlist', data={'name': 'Trap nuevo', 'description': 'Lo nuevo de tus artistas'})
+    canal = canales.get_canal(db, logged['user_id'], canal_id)
+
+    assert put.calls.last.request.read() == b'{"name":"Trap nuevo"}'
+    assert canal['target_name'] == 'Trap nuevo'
+    assert 'Guardamos los cambios en tu playlist.' in response.text
+    assert 'name="name" value="Trap nuevo"' in response.text
+
+
+def test_edit_playlist_description_without_line_breaks(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    library_with_target(spotify, logged['spotify_user_id'])
+    logged['client'].get(f'/canales/{canal_id}/ajustes')
+    put = spotify.put(f'{API_URL}/playlists/mia').respond(200)
+
+    response = logged['client'].post(f'/canales/{canal_id}/playlist', data={'name': 'Trap', 'description': 'Una\r\ndos'})
+
+    assert put.calls.last.request.read() == b'{"description":"Una dos"}'
+    assert 'Una dos</textarea>' in response.text
+
+
+def test_edit_playlist_needs_a_name(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    library_with_target(spotify, logged['spotify_user_id'])
+    put = spotify.put(f'{API_URL}/playlists/mia').respond(200)
+
+    response = logged['client'].post(f'/canales/{canal_id}/playlist', data={'name': ' ', 'description': ''})
+
+    assert not put.called
+    assert 'La playlist necesita un nombre.' in response.text
 
 
 def test_unlink_with_playlist_deletes_both(logged, db, spotify):
@@ -324,7 +392,6 @@ def test_boosted_click_gets_only_panel_and_sidebar(logged, db, spotify):
         assert 'data-n="Perfil"' not in response.text, path
         assert '<title>Radar de Viernes</title>' in response.text, path
         assert 'data-n="Panel"' in response.text, path
-        assert 'id="nav-inicio" hx-swap-oob="outerHTML"' in response.text, path
         assert 'id="lista-canales" hx-swap-oob="outerHTML"' in response.text, path
         assert 'HX-Boosted' in response.headers['vary'], path
         assert response.headers['cache-control'] == 'no-store', path
@@ -335,17 +402,42 @@ def test_boosted_click_marks_its_row_in_the_sidebar(logged, db, spotify):
     mock_library(spotify, logged['spotify_user_id'])
 
     canal = logged['client'].get(f'/canales/{canal_id}', headers=BOOSTED)
-    home = logged['client'].get('/', headers=BOOSTED)
+    nuevo = logged['client'].get('/canales/nuevo', headers=BOOSTED)
 
-    assert 'class="nav-row on" href="/canales/' in canal.text
-    assert 'class="nav-row on" href="/"' not in canal.text
-    assert 'class="nav-row on" href="/"' in home.text
+    assert f'class="nav-row on" href="/canales/{canal_id}"' in canal.text
     assert 'id="canal-panel"' in canal.text
     # la vista abierta no se precarga: el mouse que quedo encima tras el click no vuelve a pedirla
-    assert 'href="/" preload="mouseover"' in canal.text
-    assert 'href="/" preload="mouseover"' not in home.text
-    assert f'href="/canales/{canal_id}" preload="mouseover"' in home.text
+    assert f'href="/canales/{canal_id}" preload="mouseover"' in nuevo.text
     assert f'href="/canales/{canal_id}" preload="mouseover"' not in canal.text
+
+
+def test_home_opens_the_first_canal(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+
+    response = logged['client'].get('/', follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers['location'] == f'/canales/{canal_id}'
+
+
+def test_failure_lands_on_home_instead_of_bouncing_to_the_canal(logged, db, spotify):
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    spotify.get(f'{API_URL}/me/playlists').respond(503)
+
+    failed = logged['client'].get(f'/canales/{canal_id}')
+    again = logged['client'].get('/', follow_redirects=False)
+
+    assert 'Spotify no respondio bien' in failed.text
+    assert 'Elegi un Canal de la izquierda.' in failed.text
+    assert again.headers['location'] == f'/canales/{canal_id}'
+
+
+def test_home_without_canales_invites_to_create_one(logged):
+    response = logged['client'].get('/')
+
+    assert 'data-n="Vista sin Canales"' in response.text
+    assert 'href="/canales/nuevo" data-n="Boton Crear Canal"' in response.text
+    assert 'Tu biblioteca' not in response.text
 
 
 def test_preloaded_view_is_cached_for_a_few_seconds(logged):
@@ -370,21 +462,31 @@ def test_back_without_snapshot_gets_the_whole_page(logged):
     assert response.text.startswith('<!doctype html>')
 
 
-def test_run_now_queues_the_run(logged, db, monkeypatch):
+def test_run_now_queues_the_run(logged, db, spotify, monkeypatch):
     queued = []
     monkeypatch.setattr(web, 'run_in_background', queued.append)
-    canales.create_canal(db, logged['user_id'], 'p1', 'Radar', True)
+    canal_id = canales.create_canal(db, logged['user_id'], 'mia', 'Trap', False)
+    mock_library(spotify, logged['spotify_user_id'])
 
-    home = logged['client'].get('/')
-    response = logged['client'].post('/correr')
+    view = logged['client'].get(f'/canales/{canal_id}/ajustes')
+    response = logged['client'].post('/correr', data={'volver': f'/canales/{canal_id}/ajustes'})
 
-    assert 'Buscar novedades ahora' in home.text
+    assert 'data-n="Boton Buscar novedades"' in view.text
     assert queued == [logged['user_id']]
+    assert str(response.url).endswith(f'/canales/{canal_id}/ajustes')
     assert 'Estamos buscando novedades' in response.text
 
 
+def test_run_now_does_not_go_back_outside_the_app(logged, monkeypatch):
+    monkeypatch.setattr(web, 'run_in_background', lambda user_id: None)
+
+    response = logged['client'].post('/correr', data={'volver': 'https://otro.sitio'}, follow_redirects=False)
+
+    assert response.headers['location'] == '/'
+
+
 def test_run_now_button_needs_a_canal(logged):
-    assert 'Buscar novedades ahora' not in logged['client'].get('/').text
+    assert 'Boton Buscar novedades' not in logged['client'].get('/').text
 
 
 # Refresco rapido y reanudable (#24)

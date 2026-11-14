@@ -555,6 +555,17 @@ def create_playlist(access_token, name):
     return playlist
 
 
+def update_playlist_details(access_token, playlist_id, **changes):
+    '''
+    Cambia el nombre y/o la descripcion de una playlist propia (PUT /playlists/{id}, sigue en la API tras feb 2026).
+        Args:
+            access_token (str): access token vigente
+            playlist_id (str): id de Spotify de la playlist
+            **changes: name y/o description
+    '''
+    call_api('PUT', access_token, f'/playlists/{playlist_id}', json=changes)
+
+
 def remove_playlist(access_token, playlist_id):
     '''
     Saca una playlist de la biblioteca del User, que en Spotify es como borrarla (ADR 0005).
